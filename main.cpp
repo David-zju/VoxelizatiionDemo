@@ -11,10 +11,9 @@
 int main() {
     std::string json_file = "../models/run1.json";
     std::string stl_file = "../models/run1.stl";
-    const int resolution = 64;
+    const int resolution = 16;
 
     size_t numThreads = std::thread::hardware_concurrency();
-    numThreads = 8;
     std::cout << "Number of supported threads: " << numThreads << std::endl;
     
     // set the id and the real position of the cells
@@ -23,7 +22,7 @@ int main() {
     // set the triangles(normal included) and the material info
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
-    // int save_id = 9;
+    int save_id = 10;
     // entities.erase(entities.begin(), entities.begin()+save_id);
     // entities.erase(entities.begin()+save_id, entities.end());
     int sum = 0;
@@ -112,6 +111,18 @@ int main() {
     //     std::cout << "Layer " << i << ":\n";
     //     for (int j = 0; j < resolution; ++j) {
     //         for (int k = 0; k < resolution; ++k) {
+    //             bool b1 = cell_list[0][0][0].dexels->dexels[0][i][j].isInside((k+0.5)/(float)resolution);
+    //             std::cout<<(int)(b1) <<" ";
+    //         }
+    //         std::cout << "\n";
+    //     }
+    //     std::cout << "\n";
+    // }
+
+    // for (int i = 0; i < resolution; ++i) {
+    //     std::cout << "Layer " << i << ":\n";
+    //     for (int j = 0; j < resolution; ++j) {
+    //         for (int k = 0; k < resolution; ++k) {
     //             bool b1 = cell_list[0][0][0].voxels->voxel_list[k][j][i]->inner_lst.size() > 0;
     //             bool b2 = cell_list[0][0][0].voxels->voxel_list[k][j][i]->clash_lst.size() > 0;
     //             std::cout<<(int)(b2||b1) <<" ";
@@ -120,6 +131,7 @@ int main() {
     //     }
     //     std::cout << "\n";
     // }
+
     // Ray ray(coordinate(0.234,0,-11.234));
     // coordinate collision, collision_;
     // Status status;

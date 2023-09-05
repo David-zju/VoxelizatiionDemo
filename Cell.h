@@ -2,10 +2,13 @@
 #include "my_macros.h"
 #include "Entities.h"
 #include <vector>
+#include <unordered_map>
 #include "json_reader.h"
 
 class Voxel;
 class Voxels;
+class Dexels;
+class Dexel;
 
 // 复用上一阶段的代码，方便做集成（还是略有不同的，到时候记得做修改，但是Cell部分应该不影响）
 namespace Ohm_slice {
@@ -89,6 +92,7 @@ namespace Ohm_slice {
 		// int unflodMetalNum;
         std::vector<short> clash_lst; // Cell的表面与哪些零件有交
 		Voxels* voxels;
+		Dexels* dexels;
 		Cell() {
 			// memset((void*)isConduction, 0, 12 * sizeof(bool));
 			// unflodMetalNum = 0;
@@ -101,7 +105,9 @@ namespace Ohm_slice {
 			// }
 		}
 		void refine_to_voxels(int res);
-		void raycast(const std::vector<Entity>& entities);
+		void refine_to_dexels(int res);
+		void raycast_voxel(const std::vector<Entity>& entities);
+		void raycast_dexel(const std::vector<Entity>& entities);
 		coordinate iloc(coordinate realloc);
 		static std::vector<std::vector<std::vector<Cell>>> build_cell_list(std::string json_file) {
 			std::vector<T_NUMBER> px, py, pz;
@@ -212,5 +218,43 @@ class Voxels{
         size_t resolution; // 2, 4, 8, 16, 32, 64
 };
 
+class Dexel{
+	// 不同零件用不同的dexel
+	public:
+		// {t, status} t = [0,1]
+		std::vector<std::pair<T_NUMBER, Status>> scan_lst;
+		bool isInside(T_NUMBER t){
+			if(scan_lst.size() == 0) return false;
+			// 判断cell内部的某个点是否在某个零件内
+			for(std::pair p : scan_lst){
+				if(p.first > t) return bool(p.second);
+			}
+			throw std::runtime_error("超出Dexel范围");
+		}
+};
 
+class Dexels{
+	public:
+		size_t resolution;
+		std::unordered_map<short, Dexel**> dexels;
+		Dexels(size_t res, const std::vector<short>& clash_lst) : resolution(res) {
+			// 初始化 resolution 成员变量
+			resolution = res;
 
+			// 初始化 dexels 成员变量
+			for (size_t clash : clash_lst) {
+				dexels[clash] = new Dexel*[resolution];
+				for (size_t i = 0; i < resolution; ++i) {
+					dexels[clash][i] = new Dexel[resolution];
+				}
+			}
+    	}
+		~Dexels() {
+        for (auto& entry : dexels) {
+            for (size_t i = 0; i < resolution; ++i) {
+                delete[] entry.second[i];
+            }
+            delete[] entry.second;
+        }
+    }
+};

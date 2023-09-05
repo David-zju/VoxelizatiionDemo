@@ -7,6 +7,10 @@ void Ohm_slice::Cell::refine_to_voxels(int res){
     voxels = new Voxels(res, *this);
 }
 
+void Ohm_slice::Cell::refine_to_dexels(int res){
+    dexels = new Dexels(res, clash_lst);
+}
+
 coordinate Ohm_slice::Cell::iloc(coordinate realloc){
     using namespace std;
     coordinate relative = realloc - LeftDown();
@@ -15,7 +19,7 @@ coordinate Ohm_slice::Cell::iloc(coordinate realloc){
     return coordinate(floor(relative.x/step_lens.x), floor(relative.y/step_lens.y), floor(relative.z/step_lens.z));
 }
 
-void Ohm_slice::Cell::raycast(const std::vector<Entity>& entities){
+void Ohm_slice::Cell::raycast_voxel(const std::vector<Entity>& entities){
     // clash_lst.size() > 0 
     // 要和所有的entity求交，并体素化
     size_t resolution = voxels->res();
@@ -59,6 +63,45 @@ void Ohm_slice::Cell::raycast(const std::vector<Entity>& entities){
                         // fill
                         voxels->voxel_list[x][y][id]->inner_lst.push_back(entity_id);
                     }
+                }
+            }
+        }
+    }
+}
+
+void Ohm_slice::Cell::raycast_dexel(const std::vector<Entity>& entities){
+    // clash_lst.size() > 0 
+    // 要和所有的entity求交，并存储在dexel中
+    size_t resolution = dexels->resolution;
+    coordinate step_lens = steps(resolution, resolution, resolution);
+    const size_t z = 0;
+    T_NUMBER t = std::numeric_limits<T_NUMBER>::max();
+    Status status;
+    // std::vector<std::pair<size_t, Status>> scan_lst; // 扫描线的交点信息
+    for(size_t x = 0; x < resolution; x++){
+        for(size_t y = 0; y < resolution; y++){
+            for(size_t entity_id : clash_lst){
+                Ray ray(coordinate(x+0.5, y+0.5, z).times(step_lens) + LeftDown());
+                // scan_lst.clear();
+                while (true){
+                    t = ray.Intersect(entities[entity_id], status);
+                    // no intersection
+                    if(t == std::numeric_limits<T_NUMBER>::max()) break;
+                    // intersection
+                    coordinate intersec = ray.origin + coordinate(0,0,1)*t;
+                    if(intersec.z >= RightUp().z) break;
+                    
+                    dexels->dexels[entity_id][x][y].scan_lst.push_back({t, status});
+                    // set new ray
+                    ray.origin = ray.origin + (t + ACCURACY_THRESHOD)*coordinate(0,0,1);
+                }
+                if(dexels->dexels[entity_id][x][y].scan_lst.size() == 0) continue;
+                // 按照cell的边界进行补全，边界上也算是与零件求交的边界
+                if(dexels->dexels[entity_id][x][y].scan_lst[0].second == OUT){
+                    dexels->dexels[entity_id][x][y].scan_lst.insert(dexels->dexels[entity_id][x][y].scan_lst.begin(), {0, IN});
+                }
+                if(dexels->dexels[entity_id][x][y].scan_lst.back().second == IN){
+                    dexels->dexels[entity_id][x][y].scan_lst.push_back({RightUp().z - LeftDown().z, OUT});
                 }
             }
         }
