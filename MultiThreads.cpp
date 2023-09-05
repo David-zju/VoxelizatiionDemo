@@ -41,10 +41,10 @@ void voxelization_thread(ThreadParams& params){
     for(size_t id = start; id < end; id++){
         id_convert(id, dim1, dim2, dim3, x, y, z);
         if(cell_list[x][y][z].clash_lst.size()>0){
-            cell_list[x][y][z].refine_to_voxels(resolution);
-            cell_list[x][y][z].raycast_voxel(entities);
-            // cell_list[x][y][z].refine_to_dexels(resolution);
-            // cell_list[x][y][z].raycast_dexel(entities);
+            // cell_list[x][y][z].refine_to_voxels(resolution);
+            // cell_list[x][y][z].raycast_voxel(entities);
+            cell_list[x][y][z].refine_to_dexels(resolution);
+            cell_list[x][y][z].raycast_dexel(entities);
         }
     }
 }
