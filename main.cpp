@@ -11,7 +11,7 @@
 int main() {
     std::string json_file = "../models/run1.json";
     std::string stl_file = "../models/run1.stl";
-    const int resolution = 16;
+    const int resolution = 64;
 
     size_t numThreads = std::thread::hardware_concurrency();
     numThreads = 8;
@@ -23,9 +23,9 @@ int main() {
     // set the triangles(normal included) and the material info
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
-    int save_id = 9;
+    // int save_id = 9;
     // entities.erase(entities.begin(), entities.begin()+save_id);
-    entities.erase(entities.begin()+save_id, entities.end());
+    // entities.erase(entities.begin()+save_id, entities.end());
     int sum = 0;
     for(size_t i = 0; i < entities.size(); i++){
         std::cout<<i<<" " << entities[i].count_triangle() << std::endl;
