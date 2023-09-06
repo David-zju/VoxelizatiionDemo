@@ -22,7 +22,7 @@ int main() {
     // set the triangles(normal included) and the material info
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
-    int save_id = 10;
+    // int save_id = 10;
     // entities.erase(entities.begin(), entities.begin()+save_id);
     // entities.erase(entities.begin()+save_id, entities.end());
     int sum = 0;
