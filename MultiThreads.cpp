@@ -89,3 +89,7 @@ void id_convert(size_t position, size_t dim1, size_t dim2, size_t dim3, size_t& 
     y = (position % (dim2 * dim3)) / dim3;
     z = position % dim3;
 }
+
+// bool ohm_connect(Ohm_slice::Cell& cell, size_t resolution){
+
+// }

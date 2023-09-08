@@ -11,7 +11,7 @@
 int main() {
     std::string json_file = "../models/run1.json";
     std::string stl_file = "../models/run1.stl";
-    const int resolution = 16;
+    const int resolution = 64;
 
     size_t numThreads = std::thread::hardware_concurrency();
     std::cout << "Number of supported threads: " << numThreads << std::endl;
@@ -22,32 +22,14 @@ int main() {
     // set the triangles(normal included) and the material info
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
-    // int save_id = 10;
-    // entities.erase(entities.begin(), entities.begin()+save_id);
-    // entities.erase(entities.begin()+save_id, entities.end());
-    int sum = 0;
-    for(size_t i = 0; i < entities.size(); i++){
-        std::cout<<i<<" " << entities[i].count_triangle() << std::endl;
-        // sum+=entities[i].count_triangle();
-    }
-    // std::cout << (sum/27810.0) * 1574.94 / 60 <<" min"<<std::endl;
+
     // build the BVH tree
     for(size_t i = 0; i < entities.size(); i++){
         entities[i].build_BVH();
     }
     std::cout<< "BVH trees are built." << std::endl;
-    // BVHNode::print(entities[1].BVHTree, 0);
-    // find metal entities clash with cells
-    // for(size_t x = 0; x < cell_list.size(); x++){
-    //     for(size_t y = 0; y < cell_list[0].size(); y++){
-    //         for(size_t z = 0; z < cell_list[0][0].size(); z++){
-    //             for(size_t id = 0; id < entities.size(); id++){
-    //                 // 注意短路原则，metal判断放前面
-    //                 if(entities[id].is_metal && cell_list[x][y][z].clash(entities[id])) cell_list[x][y][z].clash_lst.push_back(id);
-    //             }
-    //         }
-    //     }
-    // }
+    
+    int sum = 0;
     std::cout<<"Starting matching cells with clashed entities..."<<std::endl;
     auto start  = std::chrono::high_resolution_clock::now();
     InitialMultiThreads(numThreads, cell_list, entities, resolution, cell_clash_thread);
@@ -62,7 +44,7 @@ int main() {
             }
         }
     }
-    std::cout <<"sum = "<< sum << std::endl;
+    std::cout <<"total_clash_cell_sum = "<< sum << std::endl;
     // // Voxelization with raycasting locally
     // for(size_t x = 0; x < cell_list.size(); x++){
     //     for(size_t y = 0; y < cell_list[0].size(); y++){
@@ -74,7 +56,7 @@ int main() {
     //         }
     //     }
     // }
-    std::cout<< "Starting voxelization..." <<std::endl;
+    std::cout<< "Starting dexelization..." <<std::endl;
     start  = std::chrono::high_resolution_clock::now();
     InitialMultiThreads(numThreads, cell_list, entities, resolution, voxelization_thread);
     // InitialMultiThreads(numThreads, cell_list, entities, resolution, cell_clash_thread);

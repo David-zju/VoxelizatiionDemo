@@ -138,7 +138,7 @@ namespace Ohm_slice {
 };
 
 
-class Voxel: public Box{
+class Voxel{
     //  Nodes sequence in one element
     //     5 ____________ 8
     //     /            /|       z
@@ -160,8 +160,7 @@ class Voxel: public Box{
 		// 		}
 		// 	}
         // };
-		Voxel(coordinate ld, coordinate ru)
-        :Box(ld, ru){}
+		Voxel(){}
 
         std::vector<size_t> clash_lst; // 与哪些零件表面相交
         std::vector<size_t> inner_lst; // 在哪些零件内部
@@ -205,14 +204,24 @@ class Voxels{
                 for (size_t y = 0; y < resolution; ++y) {
 					voxel_list[x][y] = new Voxel*[resolution];
                     for (size_t z = 0; z < resolution; ++z) {
-						coordinate id_xyz(x,y,z);
-						coordinate leftdown(cell.LeftDown() + (id_xyz.times(steps)));
-						coordinate rightup(cell.LeftDown() + ((id_xyz + coordinate(1,1,1)).times(steps)));
-                        voxel_list[x][y][z] = new Voxel(leftdown, rightup);
+						// coordinate id_xyz(x,y,z);
+						// coordinate leftdown(cell.LeftDown() + (id_xyz.times(steps)));
+						// coordinate rightup(cell.LeftDown() + ((id_xyz + coordinate(1,1,1)).times(steps)));
+                        voxel_list[x][y][z] = new Voxel();
                     }
                 }
             }
         }
+		~Voxels() {
+			for (size_t x = 0; x < resolution; ++x) {
+				for (size_t y = 0; y < resolution; ++y) {
+					delete[] voxel_list[x][y];
+				}
+				delete[] voxel_list[x];
+			}
+			delete[] voxel_list;
+		}
+
 		size_t res(){return resolution;}
     private:
         size_t resolution; // 2, 4, 8, 16, 32, 64
