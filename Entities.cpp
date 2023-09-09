@@ -172,6 +172,7 @@ bool Box::clash(triangle tri){
         axis_lst.push_back((temp[i]^(tri.point3 - tri.point1)).normalize());
     }
     for(coordinate axis : axis_lst){
+        if(axis.is_nan()) continue;
         Box::projectOnAxis(axis, boxMin, boxMax);
         tri.projectOnAxis(axis, triMin, triMax);
         if(!Box::overlap(boxMin, boxMax, triMin, triMax)){

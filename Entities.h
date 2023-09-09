@@ -33,6 +33,10 @@ class coordinate{
             return coordinate(x/len, y/len, z/len);
         }
 
+        bool is_nan(){
+            return std::isnan(x) && std::isnan(y) && std::isnan(z);
+        } 
+
         // 重载加法运算符
         coordinate operator+(const coordinate& other) const {
             return coordinate(x + other.x, y + other.y, z + other.z);
