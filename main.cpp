@@ -10,10 +10,10 @@
 
 int main() {
     std::string json_file = "../models/run1.json";
-    std::string stl_file = "../models/run1.stl";
-    const int resolution = 64;
-
+    std::string stl_file = "../models/ascii_sphere.stl";
+    const int resolution = 16;
     size_t numThreads = std::thread::hardware_concurrency();
+    numThreads = 1;
     std::cout << "Number of supported threads: " << numThreads << std::endl;
     
     // set the id and the real position of the cells
@@ -92,17 +92,17 @@ int main() {
     //     }
     // }
 
-    // for (int i = 0; i < resolution; ++i) {
-    //     std::cout << "Layer " << i << ":\n";
-    //     for (int j = 0; j < resolution; ++j) {
-    //         for (int k = 0; k < resolution; ++k) {
-    //             bool b1 = cell_list[0][0][0].dexels->dexels[0][i][j].isInside((k+0.5)/(float)resolution);
-    //             std::cout<<(int)(b1) <<" ";
-    //         }
-    //         std::cout << "\n";
-    //     }
-    //     std::cout << "\n";
-    // }
+    for (int i = 0; i < resolution; ++i) {
+        std::cout << "Layer " << i << ":\n";
+        for (int j = 0; j < resolution; ++j) {
+            for (int k = 0; k < resolution; ++k) {
+                bool b1 = cell_list[0][0][0].voxels->voxel_list[j][k][i]->inner_lst.size() > 0;
+                std::cout<<(int)(b1) <<" ";
+            }
+            std::cout << "\n";
+        }
+        std::cout << "\n";
+    }
 
     // for (int i = 0; i < resolution; ++i) {
     //     std::cout << "Layer " << i << ":\n";

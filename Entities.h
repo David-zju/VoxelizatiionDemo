@@ -5,13 +5,16 @@
 #include <algorithm>
 #include <cmath>
 
-class coordinate;
+
 class Box;
+class coordinate;
 class triangle;
 class Entity;
 class BVHNode;
 class Ray;
 enum Status{IN, OUT};
+enum AXIS{X,Y,Z};
+
 
 class coordinate{
     // 作为顶点坐标和法向量的数据结构
@@ -28,6 +31,7 @@ class coordinate{
             return coordinate(std::max(a.x, b.x), std::max(a.y, b.y), std::max(a.z, b.z));
         }
         coordinate normalize(){
+            // 注意有可能会产生nan
             T_NUMBER len = x * x + y * y + z * z;
             len = sqrt(len);
             return coordinate(x/len, y/len, z/len);
@@ -166,37 +170,93 @@ class Ray{
     // every ray is cast from xy plane to positive z direction
     public:
         coordinate origin;
+        AXIS direction;
         T_NUMBER t;
-        Ray(coordinate origin_, T_NUMBER t_ = 0): origin(origin_), t(t_){}
+        Ray(){}
+        Ray(coordinate origin_, AXIS d): origin(origin_), t(0), direction(d){}
         bool clash(Box box){
-            if(origin.z > box.RightUp().z) return false;
-            // 判断xy坐标是否落在投影平面内
-            if(origin.x < box.LeftDown().x || origin.x > box.RightUp().x) return false;
-            if(origin.y < box.LeftDown().y || origin.y > box.RightUp().y) return false;
-            return true;
-        }
-        T_NUMBER Intersect(triangle tri, Status& status){ // 可以直接投影成2维做
-            auto crossProduct = [](coordinate v1, coordinate v2) {
-                return v1.x * v2.y - v2.x * v1.y;
-            };
-            // 首先判断是否在光线的正面，这个可以由参数方程求解证明得到
-            t = ((tri.point1 - origin) * tri.normal) / (tri.normal.z);
-            if(t < 0) return std::numeric_limits<T_NUMBER>::max();
-            // 然后在xy平面上处理是否在三角形内，用origin到三个顶点的向量之间的夹角来判断
-            // 这里只用向量的xy坐标
-            coordinate v1 = tri.point2 - tri.point1;
-            coordinate v2 = tri.point3 - tri.point2;
-            coordinate v3 = tri.point1 - tri.point3;
-            T_NUMBER AB = crossProduct(v1, origin - tri.point1);
-            T_NUMBER BC = crossProduct(v2, origin - tri.point2);
-            T_NUMBER CA = crossProduct(v3, origin - tri.point3);
-            // 如果都在三条边的左侧或者右侧，那么就在三角形内部
-            if((AB <= 0 && BC <= 0 && CA <= 0) || (AB >= 0 && BC >= 0 && CA >= 0)){
-                if(tri.normal.z < 0) status = IN;
-                else status = OUT;
-                return t;
+            if(direction == X){
+                if(origin.x > box.RightUp().x) return false;
+                // 判断yz坐标是否落在投影平面内
+                if(origin.z < box.LeftDown().z || origin.z > box.RightUp().z) return false;
+                if(origin.y < box.LeftDown().y || origin.y > box.RightUp().y) return false;
+                return true;
+            }else if(direction == Y){
+                if(origin.y > box.RightUp().y) return false;
+                // 判断xz坐标是否落在投影平面内
+                if(origin.x < box.LeftDown().x || origin.x > box.RightUp().x) return false;
+                if(origin.z < box.LeftDown().z || origin.z > box.RightUp().z) return false;
+                return true;
+            }else if(direction == Z){
+                if(origin.z > box.RightUp().z) return false;
+                // 判断xy坐标是否落在投影平面内
+                if(origin.x < box.LeftDown().x || origin.x > box.RightUp().x) return false;
+                if(origin.y < box.LeftDown().y || origin.y > box.RightUp().y) return false;
+                return true;
             }
-            return std::numeric_limits<T_NUMBER>::max();
+            std::runtime_error("Direction of Ray is illegal !");
+        }
+        
+        T_NUMBER Intersect(triangle tri, Status& status){ // 可以直接投影成2维做
+            if(direction == X){
+                // 首先判断是否在光线的正面，这个可以由参数方程求解证明得到
+                t = ((tri.point1 - origin) * tri.normal) / (tri.normal.x);
+                if(t < 0 || std::isnan(t)) return std::numeric_limits<T_NUMBER>::max();
+                // 然后在yz平面上处理是否在三角形内，用origin到三个顶点的向量之间的夹角来判断
+                // 这里只用向量的yz坐标
+                coordinate v1 = tri.point2 - tri.point1;
+                coordinate v2 = tri.point3 - tri.point2;
+                coordinate v3 = tri.point1 - tri.point3;
+                T_NUMBER AB = ((v1)^(origin - tri.point1)).x;
+                T_NUMBER BC = ((v2)^(origin - tri.point2)).x;
+                T_NUMBER CA = ((v3)^(origin - tri.point3)).x;
+                // 如果都在三条边的左侧或者右侧，那么就在三角形内部
+                if((AB <= 0 && BC <= 0 && CA <= 0) || (AB >= 0 && BC >= 0 && CA >= 0)){
+                    if(tri.normal.x < 0) status = IN;
+                    else status = OUT;
+                    return t;
+                }
+                return std::numeric_limits<T_NUMBER>::max();
+            }else if(direction == Y){
+                // 首先判断是否在光线的正面，这个可以由参数方程求解证明得到
+                t = ((tri.point1 - origin) * tri.normal) / (tri.normal.y);
+                if(t < 0 || std::isnan(t)) return std::numeric_limits<T_NUMBER>::max();
+                // 然后在yz平面上处理是否在三角形内，用origin到三个顶点的向量之间的夹角来判断
+                // 这里只用向量的xz坐标
+                coordinate v1 = tri.point2 - tri.point1;
+                coordinate v2 = tri.point3 - tri.point2;
+                coordinate v3 = tri.point1 - tri.point3;
+                T_NUMBER AB = ((v1)^(origin - tri.point1)).y;
+                T_NUMBER BC = ((v2)^(origin - tri.point2)).y;
+                T_NUMBER CA = ((v3)^(origin - tri.point3)).y;
+                // 如果都在三条边的左侧或者右侧，那么就在三角形内部
+                if((AB <= 0 && BC <= 0 && CA <= 0) || (AB >= 0 && BC >= 0 && CA >= 0)){
+                    if(tri.normal.y < 0) status = IN;
+                    else status = OUT;
+                    return t;
+                }
+                return std::numeric_limits<T_NUMBER>::max();
+            }else if(direction == Z){
+                // 首先判断是否在光线的正面，这个可以由参数方程求解证明得到
+                t = ((tri.point1 - origin) * tri.normal) / (tri.normal.z);
+                if(t < 0 || std::isnan(t)) return std::numeric_limits<T_NUMBER>::max();
+                // 然后在xy平面上处理是否在三角形内，用origin到三个顶点的向量之间的夹角来判断
+                // 这里只用向量的xy坐标
+                coordinate v1 = tri.point2 - tri.point1;
+                coordinate v2 = tri.point3 - tri.point2;
+                coordinate v3 = tri.point1 - tri.point3;
+                T_NUMBER AB = ((v1)^(origin - tri.point1)).z;
+                T_NUMBER BC = ((v2)^(origin - tri.point2)).z;
+                T_NUMBER CA = ((v3)^(origin - tri.point3)).z;
+                // 如果都在三条边的左侧或者右侧，那么就在三角形内部
+                if((AB <= 0 && BC <= 0 && CA <= 0) || (AB >= 0 && BC >= 0 && CA >= 0)){
+                    if(tri.normal.z < 0) status = IN;
+                    else status = OUT;
+                    return t;
+                }
+                return std::numeric_limits<T_NUMBER>::max();
+            }
+            std::runtime_error("Direction of Ray is illegal !");
         }
         T_NUMBER Intersect(Entity entity, Status& status){
             return entity.BVHTree->Intersect(*this, status);

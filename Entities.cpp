@@ -34,7 +34,7 @@ void load_entities(std::string json_file, std::string stl_file, std::vector<Enti
         entities.push_back(entity);
     }
     if(entities.size() != is_metal.size()){
-        throw std::runtime_error("json信息与STL信息不一致！");
+        // throw std::runtime_error("json信息与STL信息不一致！");
     }else{
         std::cout<< "entities attributes are set." << std::endl;
     }

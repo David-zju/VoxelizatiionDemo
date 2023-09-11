@@ -3,6 +3,7 @@
 #include "Entities.h"
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include "json_reader.h"
 
 class Voxel;
@@ -92,7 +93,9 @@ namespace Ohm_slice {
 		// int unflodMetalNum;
         std::vector<short> clash_lst; // Cell的表面与哪些零件有交
 		Voxels* voxels;
-		Dexels* dexels;
+		Dexels* dexels_x;
+		Dexels* dexels_y;
+		Dexels* dexels_z;
 		Cell() {
 			// memset((void*)isConduction, 0, 12 * sizeof(bool));
 			// unflodMetalNum = 0;
@@ -107,14 +110,15 @@ namespace Ohm_slice {
 		void refine_to_voxels(int res);
 		void refine_to_dexels(int res);
 		void raycast_voxel(const std::vector<Entity>& entities);
-		void raycast_dexel(const std::vector<Entity>& entities);
+		void raycast_dexel(const std::vector<Entity>& entities, AXIS axis);
+		void dexel_to_voxel();
 		coordinate iloc(coordinate realloc);
 		static std::vector<std::vector<std::vector<Cell>>> build_cell_list(std::string json_file) {
 			std::vector<T_NUMBER> px, py, pz;
 			get_mesh(json_file, px, py, pz); // read the data from jsonfile
-			// px = {-1, 0, 1};
-			// py = {-1, 0, 1};
-			// pz = {-1, 0, 1};
+			px = {-1, 0, 1};
+			py = {-1, 0, 1};
+			pz = {-1, 0, 1};
 			// 注意cell的数量比网格线少1
 			// 创建一个三维的 Cell vector 存储cells的几何信息
 			std::vector<std::vector<std::vector<Cell>>> cell_list;
@@ -144,12 +148,14 @@ class Voxel{
     //     /            /|       z
     //    /___________ / |       |
     //  6|            |7 |       |____ y
-    //   |            |  |      /
-    //   |  1         |  |4    /
-    //   |            | /    x
-    //   |____________|/
+    //   |            |  |      /      
+    //   |  1         |  |4    /        /\
+    //   |            | /    x         /
+    //   |____________|/             eye
     //  2           3
-    public:
+    // right left 等方向以面向屏幕朝里为准，坐标轴如图所示
+	// front 是x轴较大的方向
+	public:
         // Voxel(std::vector<short> lst, coordinate ld, coordinate ru, Voxel* parent_ = nullptr)
         // :Box(ld, ru), clash_lst(lst), parent(parent_){
         //     for (int i = 0; i < 2; ++i) {
@@ -162,8 +168,12 @@ class Voxel{
         // };
 		Voxel(){}
 
-        std::vector<size_t> clash_lst; // 与哪些零件表面相交
-        std::vector<size_t> inner_lst; // 在哪些零件内部
+        std::unordered_set<size_t> clash_lst; // 与哪些零件表面相交
+        std::unordered_set<size_t> inner_lst; // 在哪些零件内部
+		// voxel 的连接性
+		bool up = false, down = false;
+		bool right = false, left = false;
+		bool front = false, back = false;
         // Voxel* parent;
         // Voxel* children[2][2][2];
 		// Voxel(int res, Ohm_slice::Cell cell):Box(cell.LeftDown(), cell.RightUp()), resolution(res){ // 建立坐标映射和clash_lst
@@ -230,9 +240,9 @@ class Voxels{
 class Dexel{
 	// 不同零件用不同的dexel
 	public:
-		// {t, status} t = [0,1]
+		// {t, status} t = [0,1] t是绝对坐标
 		std::vector<std::pair<T_NUMBER, Status>> scan_lst;
-		bool isInside(T_NUMBER t){
+		bool isInside(T_NUMBER t){ // 暂时没用上
 			if(scan_lst.size() == 0) return false;
 			// 判断cell内部的某个点是否在某个零件内
 			for(std::pair p : scan_lst){
@@ -245,6 +255,8 @@ class Dexel{
 class Dexels{
 	public:
 		size_t resolution;
+		// 这里是每一个零件创建一个dexels
+		// x方向的话，id为[y][z]，其他同理
 		std::unordered_map<short, Dexel**> dexels;
 		Dexels(size_t res, const std::vector<short>& clash_lst) : resolution(res) {
 			// 初始化 resolution 成员变量
