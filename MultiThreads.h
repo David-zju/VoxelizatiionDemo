@@ -21,4 +21,5 @@ void cell_clash_thread(ThreadParams& params);
 void voxelization_thread(ThreadParams& params);
 void id_convert(size_t position, size_t dim1, size_t dim2, size_t dim3, size_t& x, size_t& y, size_t& z);
 
-// bool ohm_connect(Ohm_slice::Cell& cell, size_t resolution);
+bool ohm_connect(Ohm_slice::Cell& cell, size_t resolution, std::vector<Entity>& entities);
+int countConnectedComponents(Voxel**** voxels, size_t entity_id, size_t resolution);

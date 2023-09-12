@@ -3,6 +3,7 @@
 #include "Entities.h"
 #include "my_macros.h"
 #include <iostream>
+#include <queue>
 #include <unistd.h>
 
 void cell_clash_thread(ThreadParams& params){
@@ -45,8 +46,8 @@ void voxelization_thread(ThreadParams& params){
             // cell_list[x][y][z].raycast_voxel(entities);
             cell_list[x][y][z].refine_to_dexels(resolution);
             cell_list[x][y][z].raycast_dexel(entities, X);
-            // cell_list[x][y][z].raycast_dexel(entities, Y);
-            // cell_list[x][y][z].raycast_dexel(entities, Z);
+            cell_list[x][y][z].raycast_dexel(entities, Y);
+            cell_list[x][y][z].raycast_dexel(entities, Z);
             cell_list[x][y][z].dexel_to_voxel();
         }
     }
@@ -93,6 +94,70 @@ void id_convert(size_t position, size_t dim1, size_t dim2, size_t dim3, size_t& 
     z = position % dim3;
 }
 
-// bool ohm_connect(Ohm_slice::Cell& cell, size_t resolution){
+bool ohm_connect(Ohm_slice::Cell& cell, size_t resolution, std::vector<Entity>& entities){
+    // resolution >= 16;
+    // create voxel info
+    cell.refine_to_voxels(resolution);
+    cell.refine_to_dexels(resolution);
+    cell.raycast_dexel(entities, X);
+    cell.raycast_dexel(entities, Y);
+    cell.raycast_dexel(entities, Z);
+    cell.dexel_to_voxel();
+    for(short entity_id : cell.clash_lst){
+        if(countConnectedComponents(cell.voxels->voxel_list, entity_id, resolution) > 1) return false;
+    }
+    return true;
+}
 
-// }
+int countConnectedComponents(Voxel**** voxels, size_t entity_id, size_t resolution){
+    // inital visited list
+    int connected_areas = 0;
+    bool visited[resolution][resolution][resolution];
+    std::queue<std::tuple<size_t, size_t, size_t>> q;
+    for (size_t x = 0; x < resolution; x++) {
+        for (size_t y = 0; y < resolution; y++) {
+            for (size_t z = 0; z < resolution; z++) {
+                visited[x][y][z] = false;
+            }
+        }
+    }
+    for (size_t x = 0; x < resolution; x++) {
+        for (size_t y = 0; y < resolution; y++) {
+            for (size_t z = 0; z < resolution; z++) {
+                if(!visited[x][y][z] && voxels[x][y][z]->inner_lst.count(entity_id) > 0){
+                    q.push(std::make_tuple(x,y,z));
+                    while(!q.empty()){
+                        size_t i, j, k;
+                        std::tie(i, j, k) = q.front(); q.pop();
+                        if(k<15 && voxels[i][j][k]->up && !visited[i][j][k+1]){
+                            q.push(std::make_tuple(i,j,k+1));
+                            visited[i][j][k+1] = true;
+                        } 
+                        if(voxels[i][j][k]->down && !visited[i][j][k-1]){
+                            q.push(std::make_tuple(i,j,k-1));
+                            visited[i][j][k-1] = true;
+                        }
+                        if(voxels[i][j][k]->left && !visited[i][j-1][k]){
+                            q.push(std::make_tuple(i,j-1,k));
+                            visited[i][j-1][k] = true;
+                        }
+                        if(voxels[i][j][k]->right && !visited[i][j+1][k]){
+                            q.push(std::make_tuple(i,j+1,k));
+                            visited[i][j+1][k] = true;
+                        }
+                        if(voxels[i][j][k]->front && !visited[i+1][j][k]){
+                            q.push(std::make_tuple(i+1,j,k));
+                            visited[i+1][j][k] = true;
+                        }
+                        if(voxels[i][j][k]->back && !visited[i-1][j][k]){
+                            q.push(std::make_tuple(i-1,j,k+1));
+                            visited[i+1][j][k] = true;
+                        }
+                    }
+                    connected_areas++;
+                }
+            }
+        }
+    }
+    return connected_areas;
+}
