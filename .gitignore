@@ -3,4 +3,4 @@ models/*
 .vscode/*
 log.md
 .*
-./plot/*
+plot/*
