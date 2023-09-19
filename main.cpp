@@ -30,6 +30,7 @@ int main() {
     for(size_t i = 0; i < entities.size(); i++){
         entities[i].build_BVH();
     }
+    entities.erase(entities.begin()+1, entities.end());
     std::cout<< "BVH trees are built." << std::endl;
     
     int sum = 0;
