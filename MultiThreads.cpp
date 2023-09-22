@@ -19,9 +19,9 @@ void cell_clash_thread(ThreadParams& params){
     size_t x,y,z;
     for(size_t id = start; id < end; id++){
         id_convert(id, dim1, dim2, dim3, x, y, z);
-        for(size_t id = 0; id < entities.size(); id++){
+        for(size_t entity_id = 0; entity_id < entities.size(); entity_id++){
             // 注意短路原则，metal判断放前面
-            if(entities[id].is_metal && cell_list[x][y][z].clash(entities[id])) cell_list[x][y][z].clash_lst.push_back(id);
+            if(entities[entity_id].is_metal && cell_list[x][y][z].clash(entities[entity_id])) cell_list[x][y][z].clash_lst.push_back(entity_id);
         }
     }
 }

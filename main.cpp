@@ -22,10 +22,10 @@ int main() {
     // set the triangles(normal included) and the material info
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
-    // int save_id = 1;
-    // entities.erase(entities.begin(), entities.begin()+save_id);
-    // entities.erase(entities.begin()+1, entities.end());
-    // std::cout << entities.size() << std::endl;
+    int save_id = 0;
+    entities.erase(entities.begin(), entities.begin()+save_id);
+    entities.erase(entities.begin()+1, entities.end());
+//     std::cout << entities.size() << std::endl;
     // build the BVH tree
     for(size_t i = 0; i < entities.size(); i++){
         entities[i].build_BVH();

@@ -4,3 +4,4 @@ models/*
 log.md
 .*
 plot/*
+cmake-build-*
