@@ -6,6 +6,7 @@
 
 struct ThreadParams{
     std::vector<std::vector<std::vector<Ohm_slice::Cell>>>* cell_list_ptr;
+    std::vector<std::tuple<size_t, size_t, size_t>>* cell_id_list;
     std::vector<Entity>* entities_ptr;
     size_t resolution;
     size_t start = 0;
@@ -16,6 +17,7 @@ struct ThreadParams{
 typedef void(*ThreadFunction)(ThreadParams &params);
 
 void InitialMultiThreads(int numThreads, std::vector<std::vector<std::vector<Ohm_slice::Cell>>>& cell_list, 
+                        std::vector<std::tuple<size_t, size_t, size_t>>& cell_id_list,
                         std::vector<Entity>& entities, size_t resolution, ThreadFunction func);
 void cell_clash_thread(ThreadParams& params);
 void voxelization_thread(ThreadParams& params);

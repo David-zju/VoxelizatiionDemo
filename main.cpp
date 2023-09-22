@@ -23,8 +23,8 @@ int main() {
     std::vector<Entity> entities;
     load_entities(json_file, stl_file, entities);
     int save_id = 0;
-    entities.erase(entities.begin(), entities.begin()+save_id);
-    entities.erase(entities.begin()+1, entities.end());
+    // entities.erase(entities.begin(), entities.begin()+save_id);
+    entities.erase(entities.begin()+9, entities.end());
 //     std::cout << entities.size() << std::endl;
     // build the BVH tree
     for(size_t i = 0; i < entities.size(); i++){
@@ -36,7 +36,15 @@ int main() {
     int sum = 0;
     std::cout<<"Starting matching cells with clashed entities..."<<std::endl;
     auto start  = std::chrono::high_resolution_clock::now();
-    InitialMultiThreads(numThreads, cell_list, entities, resolution, cell_clash_thread);
+    std::vector<std::tuple<size_t, size_t, size_t>> cell_id_list;
+    for(size_t x = 0; x < cell_list.size(); x++){
+        for(size_t y = 0; y < cell_list[0].size(); y++){
+            for(size_t z = 0; z < cell_list[0][0].size(); z++){
+                cell_id_list.push_back(std::make_tuple(x,y,z));
+            }
+        }
+    }
+    InitialMultiThreads(numThreads, cell_list, cell_id_list, entities, resolution, cell_clash_thread);
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     std::cout << "Time taken: " << duration/1.0E6 << " s" << std::endl;
@@ -62,7 +70,17 @@ int main() {
     // }
     std::cout<< "Starting dexelization..." <<std::endl;
     start  = std::chrono::high_resolution_clock::now();
-    InitialMultiThreads(numThreads, cell_list, entities, resolution, voxelization_thread);
+    cell_id_list.clear();
+    for(size_t x = 0; x < cell_list.size(); x++){
+        for(size_t y = 0; y < cell_list[0].size(); y++){
+            for(size_t z = 0; z < cell_list[0][0].size(); z++){
+                if(cell_list[x][y][z].clash_lst.size() > 0){
+                    cell_id_list.push_back(std::make_tuple(x,y,z));
+                }
+            }
+        }
+    }
+    InitialMultiThreads(numThreads, cell_list, cell_id_list, entities, resolution, voxelization_thread);
     // InitialMultiThreads(numThreads, cell_list, entities, resolution, cell_clash_thread);
     end = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
