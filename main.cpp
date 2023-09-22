@@ -24,7 +24,7 @@ int main() {
     load_entities(json_file, stl_file, entities);
     int save_id = 0;
     // entities.erase(entities.begin(), entities.begin()+save_id);
-    entities.erase(entities.begin()+9, entities.end());
+    // entities.erase(entities.begin()+9, entities.end());
     for(size_t i = 0; i < entities.size(); i++){
         std::cout<<i<<" "<< entities[i].triangles.size() <<std::endl;
     }
@@ -33,7 +33,7 @@ int main() {
     for(size_t i = 0; i < entities.size(); i++){
         entities[i].build_BVH();
     }
-    entities.erase(entities.begin()+1, entities.end());
+    // entities.erase(entities.begin()+1, entities.end());
     std::cout<< "BVH trees are built." << std::endl;
     
     int sum = 0;

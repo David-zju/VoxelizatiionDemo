@@ -112,6 +112,11 @@ namespace Ohm_slice {
 		static std::vector<std::vector<std::vector<Cell>>> build_cell_list(std::string json_file) {
 			std::vector<T_NUMBER> px, py, pz;
 			get_mesh(json_file, px, py, pz); // read the data from jsonfile
+			// for(size_t i = 0; i <= 16; i++){
+			// 	px.push_back(-1+i*0.125);
+			// 	py.push_back(-1+i*0.125);
+			// 	pz.push_back(-1+i*0.125);
+			// }
 			// px = {-1, 0, 1};
 			// py = {-1, 0, 1};
 			// pz = {-1, 0, 1};
