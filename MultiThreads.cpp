@@ -13,12 +13,13 @@ void cell_clash_thread(ThreadParams& params){
     size_t end = params.end;
     size_t resolution = params.resolution;
 
-    // size_t dim1 = cell_list.size();
-    // size_t dim2 = cell_list[0].size();
-    // size_t dim3 = cell_list[0][0].size();
+    size_t dim1 = cell_list.size();
+    size_t dim2 = cell_list[0].size();
+    size_t dim3 = cell_list[0][0].size();
     size_t x,y,z;
     for(size_t id = start; id < end; id++){
-        std::tie(x,y,z) = cell_id_list[id];
+        // std::tie(x,y,z) = cell_id_list[id];
+        id_convert(id, dim1, dim2, dim3, x, y, z);
         for(size_t entity_id = 0; entity_id < entities.size(); entity_id++){
             // 注意短路原则，metal判断放前面
             if(entities[entity_id].is_metal && cell_list[x][y][z].clash(entities[entity_id])) cell_list[x][y][z].clash_lst.push_back(entity_id);
@@ -34,13 +35,14 @@ void voxelization_thread(ThreadParams& params){
     size_t end = params.end;
     size_t resolution = params.resolution;
 
-    // size_t dim1 = cell_list.size();
-    // size_t dim2 = cell_list[0].size();
-    // size_t dim3 = cell_list[0][0].size();
+    size_t dim1 = cell_list.size();
+    size_t dim2 = cell_list[0].size();
+    size_t dim3 = cell_list[0][0].size();
 
     size_t x,y,z;
     for(size_t id = start; id < end; id++){
-        std::tie(x,y,z) = cell_id_list[id];
+        // std::tie(x,y,z) = cell_id_list[id];
+        id_convert(id, dim1, dim2, dim3, x, y, z);
         if(cell_list[x][y][z].clash_lst.size()>0){
             // cell_list[x][y][z].refine_to_voxels(resolution);
             // cell_list[x][y][z].raycast_voxel(entities);
@@ -54,10 +56,11 @@ void InitialMultiThreads(int numThreads, std::vector<std::vector<std::vector<Ohm
                         std::vector<std::tuple<size_t, size_t, size_t>>& cell_id_list,
                         std::vector<Entity>& entities, size_t resolution, ThreadFunction func){
     std::vector<std::thread> threads;
-    // size_t dim1 = cell_list.size();
-    // size_t dim2 = cell_list[0].size();
-    // size_t dim3 = cell_list[0][0].size();
-    size_t totalSize = cell_id_list.size();
+    size_t dim1 = cell_list.size();
+    size_t dim2 = cell_list[0].size();
+    size_t dim3 = cell_list[0][0].size();
+    size_t totalSize = dim1 * dim2 * dim3;
+    // size_t totalSize = cell_id_list.size();
 
     size_t partitionSize = totalSize/numThreads;
     size_t start, end;
