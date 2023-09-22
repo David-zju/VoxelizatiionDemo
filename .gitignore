@@ -1,7 +1,7 @@
 build/*
 models/*
 .vscode/*
-log.md
+/log.md
 .*
 plot/*
 cmake-build-*

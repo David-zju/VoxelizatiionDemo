@@ -93,9 +93,9 @@ class Box{
         }
         const coordinate LeftDown(){return leftdown;}
         const coordinate RightUp(){return rightup;}
-        bool clash(Box box);
-        bool clash(triangle tri);
-        bool clash(Entity entity);
+        bool clash(Box& box);
+        bool clash(triangle& tri);
+        bool clash(Entity& entity);
         void projectOnAxis(const coordinate& axis, T_NUMBER& min, T_NUMBER& max);
         bool overlap(T_NUMBER min1, T_NUMBER max1, T_NUMBER min2, T_NUMBER max2);
         friend std::ostream& operator<<(std::ostream& os, const Box& box) { // 重载输出
@@ -136,7 +136,7 @@ class Entity{
         Entity(bool is_m, std::vector<triangle> tri):is_metal(is_m), triangles(tri){};
         int count_triangle(){return triangles.size();};
         void build_BVH();
-        bool clash(Box box);
+        bool clash(Box& box);
         // bool clash(Ray ray);
         bool is_metal = false;
     // private:
@@ -151,8 +151,8 @@ class BVHNode {
         static BVHNode* build(std::vector<triangle>& triangles, int start, int end);
         static Box calculateBoundingBox(const triangle& tri);
         static BVHNode* buildLeafNode(triangle* tri);
-        bool clash(Box box);
-        T_NUMBER Intersect(Ray ray, Status& status);
+        bool clash(Box& box);
+        T_NUMBER Intersect(Ray& ray, Status& status);
         static void print(BVHNode* root, int level = 0);
     private:
         Box bounding_box;
@@ -175,7 +175,7 @@ class Ray{
             if(origin.y < box.LeftDown().y || origin.y > box.RightUp().y) return false;
             return true;
         }
-        T_NUMBER Intersect(triangle tri, Status& status){ // 可以直接投影成2维做
+        T_NUMBER Intersect(triangle& tri, Status& status){ // 可以直接投影成2维做
             auto crossProduct = [](coordinate v1, coordinate v2) {
                 return v1.x * v2.y - v2.x * v1.y;
             };
@@ -198,7 +198,7 @@ class Ray{
             }
             return std::numeric_limits<T_NUMBER>::max();
         }
-        T_NUMBER Intersect(Entity entity, Status& status){
+        T_NUMBER Intersect(const Entity& entity, Status& status){
             return entity.BVHTree->Intersect(*this, status);
             // T_NUMBER t = std::numeric_limits<T_NUMBER>::max();
             // for(size_t i = 0; i < entity.triangles.size(); i++){

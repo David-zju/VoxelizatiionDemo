@@ -103,7 +103,7 @@ BVHNode* BVHNode::buildLeafNode(triangle* tri) { // 这里似乎用不了const t
     return node;
 }
 
-bool BVHNode::clash(Box box){
+bool BVHNode::clash(Box& box){
     if(!bounding_box.clash(box)) return false;
     if(left != nullptr || right != nullptr){
         bool l_result = false, r_result = false;
@@ -118,7 +118,7 @@ bool BVHNode::clash(Box box){
     // }   
 }
 
-T_NUMBER BVHNode::Intersect(Ray ray, Status& status){
+T_NUMBER BVHNode::Intersect(Ray& ray, Status& status){
     // 返回的是交到的t值
     if(!ray.clash(bounding_box)){
         return std::numeric_limits<T_NUMBER>::max();
@@ -149,7 +149,7 @@ T_NUMBER BVHNode::Intersect(Ray ray, Status& status){
 //     print(root->right, level + 1);
 // }
 
-bool Box::clash(Box box){
+bool Box::clash(Box& box){
     // 查看在三个方向上是否重叠
     if(rightup.x < box.LeftDown().x || leftdown.x > box.RightUp().x) return false;
     if(rightup.y < box.LeftDown().y || leftdown.y > box.RightUp().y) return false;
@@ -157,7 +157,7 @@ bool Box::clash(Box box){
     return true;
 }
 
-bool Box::clash(triangle tri){
+bool Box::clash(triangle& tri){
     // 包围盒初判
     Box BoundingBox = BVHNode::calculateBoundingBox(tri);
     if(!clash(BoundingBox)) return false;
@@ -208,11 +208,11 @@ bool Box::overlap(T_NUMBER min1, T_NUMBER max1, T_NUMBER min2, T_NUMBER max2) {
     return max1 >= min2 && max2 >= min1;
 }
 
-bool Box::clash(Entity entity){
+bool Box::clash(Entity& entity){
     return entity.clash(*this);
 }
 
-bool Entity::clash(Box box){
+bool Entity::clash(Box& box){
     return BVHTree->clash(box);
     // for(triangle tri : triangles){
     //     if(box.clash(tri)) return true;

@@ -25,6 +25,9 @@ int main() {
     int save_id = 0;
     // entities.erase(entities.begin(), entities.begin()+save_id);
     entities.erase(entities.begin()+9, entities.end());
+    for(size_t i = 0; i < entities.size(); i++){
+        std::cout<<i<<" "<< entities[i].triangles.size() <<std::endl;
+    }
 //     std::cout << entities.size() << std::endl;
     // build the BVH tree
     for(size_t i = 0; i < entities.size(); i++){
