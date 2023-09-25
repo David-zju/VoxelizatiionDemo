@@ -74,19 +74,26 @@ struct buffer {
 
 template <typename T>
 struct device_vector : public buffer<T> {
-    device_vector(size_t len = 0) {
-        if (ptr) {
-            CUDA_ASSERT(cudaFree(ptr));
+    device_vector(size_t capacity = 0) {
+        if (capacity) {
+            resize(capacity);
         }
-        if (len) {
-            CUDA_ASSERT(cudaMalloc(&ptr, len));
+    }
+    auto resize(size_t capacity) {
+        if (capacity > len) {
+            if (ptr) {
+                CUDA_ASSERT(cudaFree(ptr));
+            }
+            CUDA_ASSERT(cudaMalloc(&ptr, capacity * sizeof(T)));
         }
-        this->len = len;
+        len = capacity;
     }
     ~device_vector() {
         if (ptr) {
-            CUDA_ASSERT(cudaFree(ptr));
+            //CUDA_ASSERT(cudaFree(ptr));
+            ptr = nullptr;
         }
+        len = 0;
     }
 };
 
