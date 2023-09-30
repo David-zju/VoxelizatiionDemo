@@ -3,15 +3,10 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-__device__ __host__ auto proj(double3 p, int d) {
-    return d == 0 ? double2 { p.y, p.z } :
-           d == 1 ? double2 { p.z, p.x } :
-                    double2 { p.x, p.y };
-}
-__device__ __host__ auto pick(double3 p, int d) {
-    return d == 0 ? p.x :
-           d == 1 ? p.y :
-                    p.z;
+__device__ __host__ auto rotate(double3 p, int d) {
+    return d == 0 ? double3 { p.y, p.z, p.x } :
+           d == 1 ? double3 { p.z, p.x, p.y } :
+                    double3 { p.x, p.y, p.z };
 }
 
 __device__ __host__ inline auto fmin(double3 a, double3 b) {
@@ -33,6 +28,7 @@ struct dim3 {
     int x;
     int y;
     int z;
+    dim3(int, int, int);
 };
 dim3 blockIdx;
 dim3 blockDim;
@@ -72,11 +68,23 @@ struct buffer {
     }
 };
 
+#include <vector>
+using std::vector;
+
 template <typename T>
 struct device_vector : public buffer<T> {
     device_vector(size_t capacity = 0) {
+        ptr = nullptr;
         if (capacity) {
             resize(capacity);
+        }
+    }
+    device_vector(vector<T> &vec) {
+        ptr = nullptr;
+        auto capacity = vec.size();
+        if (capacity) {
+            resize(capacity);
+            CUDA_ASSERT(cudaMemcpy(ptr, vec.data(), capacity * sizeof(T), cudaMemcpyDefault));
         }
     }
     auto resize(size_t capacity) {
@@ -88,18 +96,28 @@ struct device_vector : public buffer<T> {
         }
         len = capacity;
     }
+    auto copy() {
+        vector<T> vec(len);
+        return copy_to(vec);
+    }
+    auto &copy_to(vector<T> &vec) {
+        vec.resize(len);
+        CUDA_ASSERT(cudaMemcpy(vec.data(), ptr, len * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
+    auto &copy_from(vector<T> &vec) {
+        auto len = vec.size();
+        resize(len);
+        CUDA_ASSERT(cudaMemcpy(ptr, vec.data(), len * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
     ~device_vector() {
         if (ptr) {
-            //CUDA_ASSERT(cudaFree(ptr));
+            CUDA_ASSERT(cudaFree(ptr));
             ptr = nullptr;
         }
         len = 0;
     }
-};
-
-template <typename T>
-auto buffer_from(std::vector<T> &vec) {
-    return buffer<T> { vec.data(), vec.size() };
 };
 
 #include <chrono>
