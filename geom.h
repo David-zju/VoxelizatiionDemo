@@ -66,3 +66,60 @@ struct mesh_t {
         return &*this;
     }
 };
+
+auto dump_gltf(vector<double3> &verts, string file, int mode) {
+    vector<float3> out;
+    for (auto p : verts) {
+        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
+    }
+    float3 p0 = { FLT_MAX, FLT_MAX, FLT_MAX }, p1 = { FLT_MIN, FLT_MIN, FLT_MIN };
+    if (out.size()) {
+        p0 = out.back(); p1 = out.front();
+        for (auto p : out) {
+            p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
+            p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
+            p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
+        }
+        if (mode == 1) {
+            auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
+                 c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
+            out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
+            out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
+            out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
+            out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
+            out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
+            out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
+            for (int i = out.size() - 6; i < out.size(); i ++) {
+                auto p = out[i];
+                p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
+                p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
+                p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
+            }
+        }
+    }
+    std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
+    auto byteLength = out.size() * sizeof(float3);
+    fn.write((char *) out.data(), byteLength);
+
+    json j;
+    std::ifstream("tool/view.gltf") >> j;
+    for (auto &item : j["meshes"]) {
+        for (auto &prim : item["primitives"]) {
+            prim["mode"] = mode;
+        }
+    }
+    for (auto &item : j["accessors"]) {
+        item["min"][0] = p0.x; item["min"][1] = p0.y; item["min"][2] = p0.z;
+        item["max"][0] = p1.x; item["max"][1] = p1.y; item["max"][2] = p1.z;
+        item["count"] = out.size();
+    }
+    for (auto &item : j["bufferViews"]) {
+        item["byteLength"] = byteLength;
+    }
+    auto filename = filesystem::path(file).filename().u8string();
+    for (auto &item : j["buffers"]) {
+        item["byteLength"] = byteLength;
+        item["uri"] = filename + ".bin";
+    }
+    std::ofstream(file) << j.dump(2);
+}

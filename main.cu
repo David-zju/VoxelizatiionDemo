@@ -34,15 +34,15 @@ __global__ void kernel_get_faces_in_cells(
 }
 
 struct face_groups_t {
+    int dir;
     vector<double> xs, ys;
     vector<int> offset;
     vector<int4> faces;
 };
-
 auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &faces, grid_t &grid, int dir) {
     auto &xv = dir == 0 ? grid.ys : dir == 1 ? grid.zs : grid.xs;
     auto &yv = dir == 0 ? grid.zs : dir == 1 ? grid.xs : grid.ys;
-    face_groups_t ret { xv, yv };
+    face_groups_t ret { dir, xv, yv };
 
     device_vector xs(xv), ys(yv);
     ret.offset.resize(xs.len * ys.len + 1);
@@ -128,75 +128,10 @@ __global__ void kernel_cast_in_cells(
     }
 }
 
-auto dump_gltf(vector<double3> &vx, vector<double3> &vy, vector<double3> &vz, string file, int mode) {
-    vector<float3> out;
-    for (auto v : vx) {
-        auto p = revert(v, 0);
-        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
-    }
-    for (auto v : vy) {
-        auto p = revert(v, 1);
-        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
-    }
-    for (auto v : vz) {
-        auto p = revert(v, 2);
-        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
-    }
-    float3 p0 = { FLT_MAX, FLT_MAX, FLT_MAX }, p1 = { FLT_MIN, FLT_MIN, FLT_MIN };
-    if (out.size()) {
-        p0 = out.back(); p1 = out.front();
-        for (auto p : out) {
-            p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
-            p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
-            p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
-        }
-        if (mode == 1) {
-            auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
-                 c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
-            out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
-            out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
-            out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
-            out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
-            out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
-            out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
-            for (int i = out.size() - 6; i < out.size(); i ++) {
-                auto p = out[i];
-                p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
-                p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
-                p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
-            }
-        }
-    }
-    std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
-    auto byteLength = out.size() * sizeof(float3);
-    fn.write((char *) out.data(), byteLength);
-
-    json j;
-    std::ifstream("tool/view.gltf") >> j;
-    for (auto &item : j["meshes"]) {
-        for (auto &prim : item["primitives"]) {
-            prim["mode"] = mode;
-        }
-    }
-    for (auto &item : j["accessors"]) {
-        item["min"][0] = p0.x; item["min"][1] = p0.y; item["min"][2] = p0.z;
-        item["max"][0] = p1.x; item["max"][1] = p1.y; item["max"][2] = p1.z;
-        item["count"] = out.size();
-    }
-    for (auto &item : j["bufferViews"]) {
-        item["byteLength"] = byteLength;
-    }
-    auto filename = filesystem::path(file).filename().u8string();
-    for (auto &item : j["buffers"]) {
-        item["byteLength"] = byteLength;
-        item["uri"] = filename + ".bin";
-    }
-    std::ofstream(file) << j.dump(2);
-}
-
 struct cast_dexel_t {
+    int dir;
     double tol;
-    int pixels;
+    int2 dim;
     vector<double> xs, ys;
     vector<int> offset;
     vector<cast_joint_t> joints;
@@ -211,26 +146,26 @@ struct cast_dexel_t {
     auto get_verts(int mode) {
         vector<double3> verts;
         for (int u = 0; u + 1 < xs.size(); u ++) for (int v = 0; v + 1 < ys.size(); v ++) {
-            int w = u + v * xs.size();
-            for (int i = 0; i < pixels; i ++) for (int j = 0; j < pixels; j ++) {
-                int k = i + j * pixels;
+            int w = u + xs.size() * v;
+            for (int i = 0; i < dim.x; i ++) for (int j = 0; j < dim.y; j ++) {
+                int k = i + dim.x * j;
                 double2 p = {
-                    lerp(xs[u] + tol, xs[u + 1] - tol, 1. * i / (pixels - 1)),
-                    lerp(ys[v] + tol, ys[v + 1] - tol, 1. * j / (pixels - 1)),
+                    lerp(xs[u] + tol, xs[u + 1] - tol, 1. * i / (dim.x - 1)),
+                    lerp(ys[v] + tol, ys[v + 1] - tol, 1. * j / (dim.y - 1)),
                 };
-                auto m = w * pixels * pixels + k;
+                auto m = w * dim.x * dim.y + k;
                 auto begin = offset[m], end = offset[m + 1];
                 if (mode == 0) {
                     for (int q = begin; q < end; q ++) {
                         auto &a = joints[q];
-                        verts.push_back({ p.x, p.y, a.pos });
+                        verts.push_back(revert({ p.x, p.y, a.pos }, dir));
                     }
                 } else {
                     for (int q = begin; q < end - 1; q ++) {
                         auto &a = joints[q], &b = joints[q + 1];
                         if (a.solid == b.solid) {
-                            verts.push_back({ p.x, p.y, a.pos + tol });
-                            verts.push_back({ p.x, p.y, b.pos - tol });
+                            verts.push_back(revert({ p.x, p.y, a.pos + tol }, dir));
+                            verts.push_back(revert({ p.x, p.y, b.pos - tol }, dir));
                             q ++;
                         }
                     }
@@ -239,42 +174,43 @@ struct cast_dexel_t {
         }
         return verts;
     }
-    auto dump_gltf(string file, int dir, int mode) {
-        vector<double3> vx, vy, vz;
-        if (dir == 0) {
-            vx = get_verts(mode);
-        } else if (dir == 1) {
-            vy = get_verts(mode);
-        } else if (dir == 2) {
-            vz = get_verts(mode);
-        }
-        ::dump_gltf(vx, vy, vz, file, mode);
+    auto dump_gltf(string file, int mode) {
+        auto verts = get_verts(mode);
+        ::dump_gltf(verts, file, mode);
     }
 };
-auto cast_in_cells(device_vector<double3> &verts, face_groups_t &groups, int dir, int pixels, double tol) {
-    device_vector xs(groups.xs), ys(groups.ys);
-    device_vector faces(groups.faces);
-    device_vector offset(groups.offset);
-    dim3 gridDim((int) xs.len, (int) ys.len, 1),
-         blockDim(pixels, pixels, 1);
+struct device_group {
+    int dir;
+    device_vector<double> xs, ys;
+    device_vector<int> offset;
+    device_vector<int4> faces;
+    device_group(face_groups_t &group) :
+        dir(group.dir),
+        xs(group.xs), ys(group.ys),
+        offset(group.offset), faces(group.faces) {
+    }
+    auto cast(device_vector<double3> &verts, int2 dim, double tol) {
+        dim3 gridDim((int) xs.len, (int) ys.len, 1),
+             blockDim(dim.x, dim.y, 1);
 
-    cast_dexel_t ret { tol, pixels, groups.xs, groups.ys };
-    ret.offset.resize(xs.len * ys.len * blockDim.x * blockDim.y + 1);
-    device_vector len(ret.offset);
-    kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, { });
-    CUDA_ASSERT(cudaGetLastError());
+        cast_dexel_t ret { dir, tol, dim, xs.copy(), ys.copy() };
+        ret.offset.resize(xs.len * ys.len * blockDim.x * blockDim.y + 1);
+        device_vector len(ret.offset);
+        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, { });
+        CUDA_ASSERT(cudaGetLastError());
 
-    len.copy_to(ret.offset);
-    exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
-    device_vector<cast_joint_t> out(ret.offset.back());
+        len.copy_to(ret.offset);
+        exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
+        device_vector<cast_joint_t> out(ret.offset.back());
 
-    len.copy_from(ret.offset);
-    kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, out);
-    CUDA_ASSERT(cudaGetLastError());
+        len.copy_from(ret.offset);
+        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, out);
+        CUDA_ASSERT(cudaGetLastError());
 
-    out.copy_to(ret.joints);
-    return ret;
-}
+        out.copy_to(ret.joints);
+        return ret;
+    }
+};
 
 int main() {
     grid_t grid;
@@ -295,7 +231,7 @@ int main() {
         for (auto &[geom, faces] : mesh_map) {
             printf("INFO: got geom %d with %zu faces\n", geom, faces.size());
         }
-        int geom = 26;
+        int geom = 52;
         printf("WARN: filter mesh only to show g == %d\n", geom);
         mesh.faces.resize(0);
         for (auto face : mesh_map[geom]) {
@@ -322,25 +258,38 @@ int main() {
         };
     }
 
-    // WARN: it seems impossible to dump more pixels
-    int mode = 0, pixels = 4;
-    double tol = 1e-3;
+    // Note: 0 for point cloud; 1 for lines
+    int dump_mode = 0;
+    // Note: we will try to make grid from this dimension
+    int2 cast_pixels = { 16, 2 };
+    vector<int2> cast_dims = { cast_pixels };
+    if (cast_pixels.x != cast_pixels.y) {
+        cast_dims.push_back({ cast_pixels.y, cast_pixels.x });
+    }
 
     device_vector verts(mesh.verts);
     device_vector faces(mesh.faces);
     auto all_start = clock_now();
-    vector<double3> dexels[3];
+    vector<double3> dexels;
     for (int dir = 0; dir < 3; dir ++) {
         auto axis = ("xyz")[dir];
-        auto start_group = clock_now();
-        auto groups = get_faces_in_cells(verts, faces, grid, dir);
-        printf("PERF: on %c group %zu in %f s\n", axis, groups.faces.size(), seconds_since(start_group));
-        auto start_cast = clock_now();
-        auto casted = cast_in_cells(verts, groups, dir, pixels, tol);
-        printf("PERF: on %c cast %zu in %f s\n", axis, casted.joints.size(), seconds_since(start_cast));
-        dexels[dir] = casted.sort_joints().get_verts(mode);
+        auto group_start = clock_now();
+        auto face_groups = get_faces_in_cells(verts, faces, grid, dir);
+        printf("PERF: on %c group %zu in %f s\n", axis, face_groups.faces.size(), seconds_since(group_start));
+        auto cast_start = clock_now();
+        device_group groups(face_groups);
+        auto count_start = dexels.size();
+        for (auto dim : cast_dims) {
+            auto casted = groups.cast(verts, dim, 1e-3);
+            for (auto &v : casted.sort_joints().get_verts(dump_mode)) {
+                dexels.push_back(v);
+            }
+        }
+        printf("PERF: on %c cast %zu in %f s\n", axis, dexels.size() - count_start, seconds_since(cast_start));
     }
-    dump_gltf(dexels[0], dexels[1], dexels[2], "data/dump.gltf", mode);
+    if (dexels.size()) {
+        dump_gltf(dexels, "data/dump.gltf", dump_mode);
+    }
     printf("PERF: all done in %f s\n", seconds_since(all_start));
 
     return 0;
