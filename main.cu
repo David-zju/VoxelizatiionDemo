@@ -51,10 +51,8 @@ auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &face
     CUDA_ASSERT(cudaGetLastError());
 
     offset.copy_to(ret.offset);
-    auto sum = accumulate(ret.offset.begin(), ret.offset.end(), 0);
-    device_vector<int4> out(sum);
-    auto offset_vec = ret.offset;
-    exclusive_scan(offset_vec.begin(), offset_vec.end(), ret.offset.begin(), 0);
+    exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
+    device_vector<int4> out(ret.offset.back());
 
     offset.copy_from(ret.offset);
     kernel_get_faces_in_cells CU_DIM(1024, 128) (verts, faces, xs, ys, dir, offset, out);
@@ -98,7 +96,7 @@ __host__ __device__ __forceinline__ auto point_in_triangle(double2 p, double3 A,
 }
 
 struct cast_joint_t {
-    short solid;
+    unsigned short solid;
     float pos;
 };
 auto operator<(const cast_joint_t &a, const cast_joint_t &b) {
@@ -124,7 +122,7 @@ __global__ void kernel_cast_in_cells(
         if (pos != DBL_MAX) {
             auto next = atomicAdd(len.ptr + w * blockDim.x * blockDim.y + k, 1);
             if (next < out.len) {
-                out[next] = { (short) face.w, (float) pos };
+                out[next] = { (unsigned short) face.w, (float) pos };
             }
         }
     }
@@ -267,10 +265,8 @@ auto cast_in_cells(device_vector<double3> &verts, face_groups_t &groups, int dir
     CUDA_ASSERT(cudaGetLastError());
 
     len.copy_to(ret.offset);
-    auto sum = accumulate(ret.offset.begin(), ret.offset.end(), 0);
-    device_vector<cast_joint_t> out(sum);
-    auto offset_vec = ret.offset;
-    exclusive_scan(offset_vec.begin(), offset_vec.end(), ret.offset.begin(), 0);
+    exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
+    device_vector<cast_joint_t> out(ret.offset.back());
 
     len.copy_from(ret.offset);
     kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, out);
@@ -290,16 +286,20 @@ int main() {
     printf("INFO: loaded %zu x %zu x %zu (%zu) grids\n", nx, ny, nz, nx * ny * nz);
 
     mesh_t mesh;
-    mesh.from_obj("data\\toStudent_EM2.obj");
+    mesh.from_obj("data\\toStudent_EM3.obj");
     if (0) {
-        int geom = 52;
+        map<int, vector<int4>> mesh_map;
+        for (auto face : mesh.faces) {
+            mesh_map[face.w].push_back(face);
+        }
+        for (auto &[geom, faces] : mesh_map) {
+            printf("INFO: got geom %d with %zu faces\n", geom, faces.size());
+        }
+        int geom = 26;
         printf("WARN: filter mesh only to show g == %d\n", geom);
-        auto mesh_faces = mesh.faces;
         mesh.faces.resize(0);
-        for (auto face : mesh_faces) {
-            if (face.w == geom) {
-                mesh.faces.push_back(face);
-            }
+        for (auto face : mesh_map[geom]) {
+            mesh.faces.push_back(face);
         }
     }
     printf("INFO: loaded %zu faces with %zu vertices\n", mesh.faces.size(), mesh.verts.size());
@@ -323,7 +323,7 @@ int main() {
     }
 
     // WARN: it seems impossible to dump more pixels
-    int mode = 0, pixels = 32;
+    int mode = 0, pixels = 4;
     double tol = 1e-3;
 
     device_vector verts(mesh.verts);
@@ -338,7 +338,7 @@ int main() {
         auto start_cast = clock_now();
         auto casted = cast_in_cells(verts, groups, dir, pixels, tol);
         printf("PERF: on %c cast %zu in %f s\n", axis, casted.joints.size(), seconds_since(start_cast));
-        //dexels[dir] = casted.sort_joints().get_verts(mode);
+        dexels[dir] = casted.sort_joints().get_verts(mode);
     }
     dump_gltf(dexels[0], dexels[1], dexels[2], "data/dump.gltf", mode);
     printf("PERF: all done in %f s\n", seconds_since(all_start));
