@@ -16,14 +16,13 @@ __global__ void kernel_get_faces_in_cells(
     buffer<int> len, buffer<int4> out) {
     for (int n = cuIdx(x); n < faces.len; n += cuDim(x)) {
         auto face = faces[n];
-        auto x = verts[face.x], y = verts[face.y], z = verts[face.z];
-        auto p0 = rotate(fmin(x, y, z), dir), p1 = rotate(fmax(x, y, z), dir);
+        auto a = verts[face.x], b = verts[face.y], c = verts[face.z];
+        auto p0 = rotate(fmin(a, b, c), dir), p1 = rotate(fmax(a, b, c), dir);
         for (int i = 0, nx = xs.len; i < nx - 1; i ++) {
             auto x0 = xs[i], x1 = xs[i + 1];
             for (int j = 0, ny = ys.len; j < ny - 1; j ++) {
                 auto y0 = ys[j], y1 = ys[j + 1];
-                if (p0.x < x1 && p0.y < y1 &&
-                    p1.x > x0 && p1.y > y0) {
+                if (p0.x < x1 && p0.y < y1 && p1.x > x0 && p1.y > y0) {
                     auto next = atomicAdd(len.ptr + i + j * nx, 1);
                     if (next < out.len) {
                         out[next] = face;
@@ -143,7 +142,7 @@ struct cast_dexel_t {
             sort(ptr + begin, ptr + end);
         }
     }
-    auto dump_gltf(string file) {
+    auto dump_gltf(string file, int mode) {
         vector<double3> bin;
         for (int u = 0; u + 1 < xs.size(); u ++) for (int v = 0; v + 1 < ys.size(); v ++) {
             int w = u + v * xs.size();
@@ -155,11 +154,10 @@ struct cast_dexel_t {
                 };
                 auto m = w * pixels * pixels + k;
                 auto begin = offset[m], end = offset[m + 1];
-                if (0) {
+                if (mode == 0) {
                     for (int q = begin; q < end; q ++) {
                         auto &a = joints[q];
-                        bin.push_back({ p.x, p.y, a.pos + tol * 10 });
-                        bin.push_back({ p.x, p.y, a.pos - tol * 10 });
+                        bin.push_back({ p.x, p.y, a.pos });
                     }
                 } else {
                     for (int q = begin; q < end - 1; q ++) {
@@ -186,13 +184,22 @@ struct cast_dexel_t {
                 p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
                 p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
             }
-            auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z };
-            out.push_back({ 0, 0, p0.z -= d.z });
-            out.push_back({ 0, 0, p1.z += d.z });
-            out.push_back({ 0, p0.y -= d.y, 0 });
-            out.push_back({ 0, p1.y += d.z, 0 });
-            out.push_back({ p0.x -= d.x, 0, 0 });
-            out.push_back({ p1.x += d.x, 0, 0 });
+            if (mode == 1) {
+                auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
+                     c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
+                out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
+                out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
+                out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
+                out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
+                out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
+                out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
+                for (int i = out.size() - 6; i < out.size(); i ++) {
+                    auto p = out[i];
+                    p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
+                    p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
+                    p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
+                }
+            }
         }
         std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
         auto byteLength = out.size() * sizeof(float3);
@@ -200,6 +207,11 @@ struct cast_dexel_t {
 
         json j;
         std::ifstream("tool/view.gltf") >> j;
+        for (auto &item : j["meshes"]) {
+            for (auto &prim : item["primitives"]) {
+                prim["mode"] = mode;
+            }
+        }
         for (auto &item : j["accessors"]) {
             item["min"][0] = p0.x; item["min"][1] = p0.y; item["min"][2] = p0.z;
             item["max"][0] = p1.x; item["max"][1] = p1.y; item["max"][2] = p1.z;
@@ -250,14 +262,21 @@ int main() {
     grid.xs = add_midpoint(grid.xs); //grid.xs = add_midpoint(grid.xs);
     grid.ys = add_midpoint(grid.ys); //grid.ys = add_midpoint(grid.ys);
     grid.zs = add_midpoint(grid.zs); //grid.zs = add_midpoint(grid.zs);
-    printf("loaded %zu x %zu x %zu (%zu) grids\n",
-        grid.xs.size(), grid.ys.size(), grid.zs.size(),
-        grid.xs.size() * grid.ys.size() * grid.zs.size());
+    auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
+    printf("loaded %zu x %zu x %zu (%zu) grids\n", nx, ny, nz, nx * ny * nz);
 
     mesh_t mesh;
-    mesh.from_obj("data\\toStudent_EM.obj");
+    mesh.from_obj("data\\toStudent_EM2.obj");
+    if (0) {
+        auto mesh_faces = mesh.faces;
+        mesh.faces.resize(0);
+        for (auto face : mesh_faces) {
+            if (face.w == 52) {
+                mesh.faces.push_back(face);
+            }
+        }
+    }
     printf("loaded %zu faces with %zu vertices\n", mesh.faces.size(), mesh.verts.size());
-
     if (0) {
         grid.xs = { -2, -1, 0, 1, 2 };
         grid.ys = { -2, -1, 0, 1, 2 };
@@ -284,9 +303,9 @@ int main() {
         auto groups = get_faces_in_cells(verts, faces, grid, dir);
         printf("group %zu in %f s\n", groups.faces.size(), seconds_since(start_group));
         auto start_cast = clock_now();
-        auto casted = cast_in_cells(verts, groups, dir, 32, 1e-3);
+        auto casted = cast_in_cells(verts, groups, dir, 8, 1e-3);
         printf("cast %zu in %f s\n", casted.joints.size(), seconds_since(start_cast));
-        //casted.dump_gltf("data/dump-" + to_string(dir) + ".gltf");
+        casted.dump_gltf("data/dump-" + to_string(dir) + ".gltf", 0);
     }
     printf("all done in %f s\n", seconds_since(all_start));
 
