@@ -43,6 +43,8 @@ struct mesh_t {
                 // pass
             } else if (!strncmp(str, "usemtl ", 7)) {
                 // pass
+            } else if (!strncmp(str, "mtllib ", 7)) {
+                // pass
             } else if (!strncmp(str, "g ", 2)) {
                 g ++;
             } else if (!strncmp(str, "v ", 2)) {

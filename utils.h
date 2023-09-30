@@ -9,6 +9,12 @@ __device__ __host__ auto rotate(double3 p, int d) {
                     double3 { p.x, p.y, p.z };
 }
 
+__device__ __host__ auto revert(double3 p, int d) {
+    return d == 0 ? double3 { p.z, p.x, p.y } :
+           d == 1 ? double3 { p.y, p.z, p.x } :
+                    double3 { p.x, p.y, p.z };
+}
+
 __device__ __host__ inline auto fmin(double3 a, double3 b) {
     return double3 { ::fmin(a.x, b.x), ::fmin(a.y, b.y), ::fmin(a.z, b.z) };
 }

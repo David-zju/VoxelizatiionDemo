@@ -129,6 +129,72 @@ __global__ void kernel_cast_in_cells(
     }
 }
 
+auto dump_gltf(vector<double3> &vx, vector<double3> &vy, vector<double3> &vz, string file, int mode) {
+    vector<float3> out;
+    for (auto v : vx) {
+        auto p = revert(v, 0);
+        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
+    }
+    for (auto v : vy) {
+        auto p = revert(v, 1);
+        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
+    }
+    for (auto v : vz) {
+        auto p = revert(v, 2);
+        out.push_back({ (float) p.x, (float) p.y, (float) p.z });
+    }
+    float3 p0 = { FLT_MAX, FLT_MAX, FLT_MAX }, p1 = { FLT_MIN, FLT_MIN, FLT_MIN };
+    if (out.size()) {
+        p0 = out.back(); p1 = out.front();
+        for (auto p : out) {
+            p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
+            p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
+            p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
+        }
+        if (mode == 1) {
+            auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
+                 c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
+            out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
+            out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
+            out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
+            out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
+            out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
+            out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
+            for (int i = out.size() - 6; i < out.size(); i ++) {
+                auto p = out[i];
+                p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
+                p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
+                p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
+            }
+        }
+    }
+    std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
+    auto byteLength = out.size() * sizeof(float3);
+    fn.write((char *) out.data(), byteLength);
+
+    json j;
+    std::ifstream("tool/view.gltf") >> j;
+    for (auto &item : j["meshes"]) {
+        for (auto &prim : item["primitives"]) {
+            prim["mode"] = mode;
+        }
+    }
+    for (auto &item : j["accessors"]) {
+        item["min"][0] = p0.x; item["min"][1] = p0.y; item["min"][2] = p0.z;
+        item["max"][0] = p1.x; item["max"][1] = p1.y; item["max"][2] = p1.z;
+        item["count"] = out.size();
+    }
+    for (auto &item : j["bufferViews"]) {
+        item["byteLength"] = byteLength;
+    }
+    auto filename = filesystem::path(file).filename().u8string();
+    for (auto &item : j["buffers"]) {
+        item["byteLength"] = byteLength;
+        item["uri"] = filename + ".bin";
+    }
+    std::ofstream(file) << j.dump(2);
+}
+
 struct cast_dexel_t {
     double tol;
     int pixels;
@@ -142,8 +208,8 @@ struct cast_dexel_t {
             sort(ptr + begin, ptr + end);
         }
     }
-    auto dump_gltf(string file, int mode) {
-        vector<double3> bin;
+    auto get_verts(int mode) {
+        vector<double3> verts;
         for (int u = 0; u + 1 < xs.size(); u ++) for (int v = 0; v + 1 < ys.size(); v ++) {
             int w = u + v * xs.size();
             for (int i = 0; i < pixels; i ++) for (int j = 0; j < pixels; j ++) {
@@ -157,75 +223,32 @@ struct cast_dexel_t {
                 if (mode == 0) {
                     for (int q = begin; q < end; q ++) {
                         auto &a = joints[q];
-                        bin.push_back({ p.x, p.y, a.pos });
+                        verts.push_back({ p.x, p.y, a.pos });
                     }
                 } else {
                     for (int q = begin; q < end - 1; q ++) {
                         auto &a = joints[q], &b = joints[q + 1];
                         if (a.solid == b.solid) {
-                            bin.push_back({ p.x, p.y, a.pos + tol });
-                            bin.push_back({ p.x, p.y, b.pos - tol });
+                            verts.push_back({ p.x, p.y, a.pos + tol });
+                            verts.push_back({ p.x, p.y, b.pos - tol });
                             q ++;
                         }
                     }
                 }
             }
         }
-
-        vector<float3> out;
-        for (auto p : bin) {
-            out.push_back({ (float) p.x, (float) p.y, (float) p.z });
+        return verts;
+    }
+    auto dump_gltf(string file, int dir, int mode) {
+        vector<double3> vx, vy, vz;
+        if (dir == 0) {
+            vx = get_verts(mode);
+        } else if (dir == 1) {
+            vy = get_verts(mode);
+        } else if (dir == 2) {
+            vz = get_verts(mode);
         }
-        float3 p0 = { FLT_MAX, FLT_MAX, FLT_MAX }, p1 = { FLT_MIN, FLT_MIN, FLT_MIN };
-        if (out.size()) {
-            p0 = out.back(); p1 = out.front();
-            for (auto p : out) {
-                p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
-                p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
-                p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
-            }
-            if (mode == 1) {
-                auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
-                     c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
-                out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
-                out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
-                out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
-                out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
-                out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
-                out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
-                for (int i = out.size() - 6; i < out.size(); i ++) {
-                    auto p = out[i];
-                    p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
-                    p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
-                    p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
-                }
-            }
-        }
-        std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
-        auto byteLength = out.size() * sizeof(float3);
-        fn.write((char *) out.data(), byteLength);
-
-        json j;
-        std::ifstream("tool/view.gltf") >> j;
-        for (auto &item : j["meshes"]) {
-            for (auto &prim : item["primitives"]) {
-                prim["mode"] = mode;
-            }
-        }
-        for (auto &item : j["accessors"]) {
-            item["min"][0] = p0.x; item["min"][1] = p0.y; item["min"][2] = p0.z;
-            item["max"][0] = p1.x; item["max"][1] = p1.y; item["max"][2] = p1.z;
-            item["count"] = out.size();
-        }
-        for (auto &item : j["bufferViews"]) {
-            item["byteLength"] = byteLength;
-        }
-        auto filename = filesystem::path(file).filename().u8string();
-        for (auto &item : j["buffers"]) {
-            item["byteLength"] = byteLength;
-            item["uri"] = filename + ".bin";
-        }
-        std::ofstream(file) << j.dump(2);
+        ::dump_gltf(vx, vy, vz, file, mode);
     }
 };
 auto cast_in_cells(device_vector<double3> &verts, face_groups_t &groups, int dir, int pixels, double tol) {
@@ -263,20 +286,23 @@ int main() {
     grid.ys = add_midpoint(grid.ys); //grid.ys = add_midpoint(grid.ys);
     grid.zs = add_midpoint(grid.zs); //grid.zs = add_midpoint(grid.zs);
     auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
-    printf("loaded %zu x %zu x %zu (%zu) grids\n", nx, ny, nz, nx * ny * nz);
+    printf("INFO: loaded %zu x %zu x %zu (%zu) grids\n", nx, ny, nz, nx * ny * nz);
 
     mesh_t mesh;
     mesh.from_obj("data\\toStudent_EM2.obj");
     if (0) {
+        int geom = 52;
+        printf("WARN: filter mesh only to show g == %d\n", geom);
         auto mesh_faces = mesh.faces;
         mesh.faces.resize(0);
         for (auto face : mesh_faces) {
-            if (face.w == 52) {
+            if (face.w == geom) {
                 mesh.faces.push_back(face);
             }
         }
     }
-    printf("loaded %zu faces with %zu vertices\n", mesh.faces.size(), mesh.verts.size());
+    printf("INFO: loaded %zu faces with %zu vertices\n", mesh.faces.size(), mesh.verts.size());
+
     if (0) {
         grid.xs = { -2, -1, 0, 1, 2 };
         grid.ys = { -2, -1, 0, 1, 2 };
@@ -295,19 +321,26 @@ int main() {
         };
     }
 
+    // WARN: it seems impossible to dump more pixels
+    int mode = 0, pixels = 4;
+    double tol = 1e-3;
+
     device_vector verts(mesh.verts);
     device_vector faces(mesh.faces);
     auto all_start = clock_now();
+    vector<double3> dexels[3];
     for (int dir = 0; dir < 3; dir ++) {
+        auto axis = ("xyz")[dir];
         auto start_group = clock_now();
         auto groups = get_faces_in_cells(verts, faces, grid, dir);
-        printf("group %zu in %f s\n", groups.faces.size(), seconds_since(start_group));
+        printf("PERF: on %c group %zu in %f s\n", axis, groups.faces.size(), seconds_since(start_group));
         auto start_cast = clock_now();
-        auto casted = cast_in_cells(verts, groups, dir, 8, 1e-3);
-        printf("cast %zu in %f s\n", casted.joints.size(), seconds_since(start_cast));
-        casted.dump_gltf("data/dump-" + to_string(dir) + ".gltf", 0);
+        auto casted = cast_in_cells(verts, groups, dir, pixels, tol);
+        printf("PERF: on %c cast %zu in %f s\n", axis, casted.joints.size(), seconds_since(start_cast));
+        dexels[dir] = casted.get_verts(mode);
     }
-    printf("all done in %f s\n", seconds_since(all_start));
+    dump_gltf(dexels[0], dexels[1], dexels[2], "data/dump.gltf", mode);
+    printf("PERF: all done in %f s\n", seconds_since(all_start));
 
     return 0;
 }
