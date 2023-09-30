@@ -59,6 +59,7 @@ auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &face
     offset.copy_from(ret.offset);
     kernel_get_faces_in_cells CU_DIM(1024, 128) (verts, faces, xs, ys, dir, offset, out);
     CUDA_ASSERT(cudaGetLastError());
+
     out.copy_to(ret.faces);
     return ret;
 }
@@ -273,9 +274,9 @@ auto cast_in_cells(device_vector<double3> &verts, face_groups_t &groups, int dir
     len.copy_from(ret.offset);
     kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, tol, len, out);
     CUDA_ASSERT(cudaGetLastError());
+
     out.copy_to(ret.joints);
     ret.sort_joints();
-
     return ret;
 }
 
