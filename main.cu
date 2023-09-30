@@ -98,8 +98,8 @@ __host__ __device__ __forceinline__ auto point_in_triangle(double2 p, double3 A,
 }
 
 struct cast_joint_t {
-    int solid;
-    double pos;
+    short solid;
+    float pos;
 };
 auto operator<(const cast_joint_t &a, const cast_joint_t &b) {
     return a.solid == b.solid ? a.pos < b.pos : a.solid < b.solid;
@@ -124,7 +124,7 @@ __global__ void kernel_cast_in_cells(
         if (pos != DBL_MAX) {
             auto next = atomicAdd(len.ptr + w * blockDim.x * blockDim.y + k, 1);
             if (next < out.len) {
-                out[next] = { face.w, pos };
+                out[next] = { (short) face.w, (float) pos };
             }
         }
     }
@@ -202,12 +202,13 @@ struct cast_dexel_t {
     vector<double> xs, ys;
     vector<int> offset;
     vector<cast_joint_t> joints;
-    auto sort_joints() {
+    auto &sort_joints() {
         auto ptr = joints.data();
         for (int m = 0, n = offset.size(); m < n - 1; m ++) {
             auto begin = offset[m], end = offset[m + 1];
             sort(ptr + begin, ptr + end);
         }
+        return *this;
     }
     auto get_verts(int mode) {
         vector<double3> verts;
@@ -276,7 +277,6 @@ auto cast_in_cells(device_vector<double3> &verts, face_groups_t &groups, int dir
     CUDA_ASSERT(cudaGetLastError());
 
     out.copy_to(ret.joints);
-    ret.sort_joints();
     return ret;
 }
 
@@ -323,7 +323,7 @@ int main() {
     }
 
     // WARN: it seems impossible to dump more pixels
-    int mode = 0, pixels = 4;
+    int mode = 0, pixels = 32;
     double tol = 1e-3;
 
     device_vector verts(mesh.verts);
@@ -338,7 +338,7 @@ int main() {
         auto start_cast = clock_now();
         auto casted = cast_in_cells(verts, groups, dir, pixels, tol);
         printf("PERF: on %c cast %zu in %f s\n", axis, casted.joints.size(), seconds_since(start_cast));
-        dexels[dir] = casted.get_verts(mode);
+        //dexels[dir] = casted.sort_joints().get_verts(mode);
     }
     dump_gltf(dexels[0], dexels[1], dexels[2], "data/dump.gltf", mode);
     printf("PERF: all done in %f s\n", seconds_since(all_start));
