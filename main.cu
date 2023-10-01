@@ -261,7 +261,7 @@ int main() {
     // Note: 0 for point cloud; 1 for lines
     int dump_mode = 0;
     // Note: we will try to make grid from this dimension
-    int2 cast_pixels = { 16, 2 };
+    int2 cast_pixels = { 4, 4 };
     vector<int2> cast_dims = { cast_pixels };
     if (cast_pixels.x != cast_pixels.y) {
         cast_dims.push_back({ cast_pixels.y, cast_pixels.x });
@@ -288,7 +288,8 @@ int main() {
         printf("PERF: on %c cast %zu in %f s\n", axis, dexels.size() - count_start, seconds_since(cast_start));
     }
     if (dexels.size()) {
-        dump_gltf(dexels, "data/dump.gltf", dump_mode);
+        auto file = "data/dump" + to_string(cast_pixels.x) + "x" + to_string(cast_pixels.y) + ".gltf";
+        dump_gltf(dexels, file, dump_mode);
     }
     printf("PERF: all done in %f s\n", seconds_since(all_start));
 
