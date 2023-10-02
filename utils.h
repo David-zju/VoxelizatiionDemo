@@ -3,16 +3,18 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-__device__ __host__ auto rotate(double3 p, int d) {
-    return d == 0 ? double3 { p.y, p.z, p.x } :
-           d == 1 ? double3 { p.z, p.x, p.y } :
-                    double3 { p.x, p.y, p.z };
+template <typename T>
+__device__ __host__ auto rotate(T p, int d) {
+    return d == 0 ? T { p.y, p.z, p.x } :
+           d == 1 ? T { p.z, p.x, p.y } :
+                    T { p.x, p.y, p.z };
 }
 
-__device__ __host__ auto revert(double3 p, int d) {
-    return d == 0 ? double3 { p.z, p.x, p.y } :
-           d == 1 ? double3 { p.y, p.z, p.x } :
-                    double3 { p.x, p.y, p.z };
+template <typename T>
+__device__ __host__ auto revert(T p, int d) {
+    return d == 0 ? T { p.z, p.x, p.y } :
+           d == 1 ? T { p.y, p.z, p.x } :
+                    T { p.x, p.y, p.z };
 }
 
 __device__ __host__ inline auto fmin(double3 a, double3 b) {
