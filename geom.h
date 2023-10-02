@@ -80,22 +80,6 @@ auto dump_gltf(vector<double3> &verts, string file, int mode) {
             p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
             p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
         }
-        if (mode == 1) {
-            auto d = float3 { p1.x - p0.x, p1.y - p0.y, p1.z - p0.z },
-                 c = float3 { p1.x + p0.x, p1.y + p0.y, p1.z + p0.z };
-            out.push_back({ c.x / 2, c.y / 2, p0.z - d.z });
-            out.push_back({ c.x / 2, c.y / 2, p1.z + d.z });
-            out.push_back({ c.x / 2, p0.y - d.y, c.z / 2 });
-            out.push_back({ c.x / 2, p1.y + d.z, c.z / 2 });
-            out.push_back({ p0.x - d.x, c.y / 2, c.z / 2 });
-            out.push_back({ p1.x + d.x, c.y / 2, c.z / 2 });
-            for (int i = out.size() - 6; i < out.size(); i ++) {
-                auto p = out[i];
-                p0.x = fmin(p0.x, p.x); p1.x = fmax(p1.x, p.x);
-                p0.y = fmin(p0.y, p.y); p1.y = fmax(p1.y, p.y);
-                p0.z = fmin(p0.z, p.z); p1.z = fmax(p1.z, p.z);
-            }
-        }
     }
     std::ofstream fn(file + ".bin", std::ios::out | std::ios::binary);
     auto byteLength = out.size() * sizeof(float3);
