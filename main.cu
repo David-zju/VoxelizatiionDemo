@@ -1,5 +1,6 @@
 #include "geom.h"
 
+#include <set>
 #include <thread>
 #include "deps/lodepng/lodepng.h"
 
@@ -72,7 +73,7 @@ auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &face
 }
 
 __host__ __device__ __forceinline__ auto lerp(double a, double b, double f) {
-    return a * (1. - f) + b * f;
+    return a + (b - a) * f;
 }
 __host__ __device__ __forceinline__ auto interp(double2 a, double2 b, double x) {
     auto f = (x - a.x) / (b.x - a.x);
@@ -83,7 +84,7 @@ __host__ __device__ __forceinline__ auto interp(double3 a, double3 b, double x) 
     return double2 { lerp(a.y, b.y, f), lerp(a.z, b.z, f) };
 }
 __host__ __device__ __forceinline__ auto ordered(double x0, double x, double x1) {
-    return (x0 < x1 && x0 <= x && x <= x1) || (x1 < x0 && x1 <= x && x <= x0);
+    return x0 != x1 && ((x0 <= x && x <= x1) || (x1 <= x && x <= x0));
 }
 __host__ __device__ __forceinline__ auto point_in_triangle(double2 p, double3 A, double3 B, double3 C, int dir, double tol) {
     double2 u = { 0 }, v = { 0 };
@@ -258,11 +259,8 @@ __global__ void kernel_render_dexel(
     int j = blockIdx.x, w = start + j,
         begin = offset[w], end = offset[w + 1],
         ns = width / points.len;
-    for (int i = threadIdx.x; i < width; i += blockDim.x) {
+    for (int i = threadIdx.x, n = ns * (points.len - 1); i < n; i += blockDim.x) {
         auto u = i / ns, v = i % ns;
-        if (u >= points.len - 1) {
-            break;
-        }
         auto pos = lerp(points[u], points[u + 1], lerp(ext, 1 - ext, 1. * v / (ns - 1)));
         for (int q = begin; q < end - 1; q ++) {
             auto &a = joints[q], &b = joints[q + 1];
@@ -275,15 +273,23 @@ __global__ void kernel_render_dexel(
         }
     }
 }
-auto dump_png(vector<pixel_t> &img, int width, int height, string file) {
+auto dump_png(vector<pixel_t> &img, int width, int height, int grid, string file, map<unsigned short, int3> &colors) {
     vector<unsigned char> buf(width * height * 4);
     for (int i = 0; i < width; i ++) {
         for (int j = 0; j < height; j ++) {
             auto k = i + j * width;
             auto p = buf.data() + k * 4;
-            p[0] = img[k].geom ? 100 : 0;
-            p[1] = 0;
-            p[2] = 0;
+            auto g = img[k].geom;
+            if (!colors.count(g)) {
+                colors[g] = int3 { rand(), rand(), rand() };
+            }
+            auto c = colors[g];
+            auto m =
+                i % grid == 0 || i % grid == grid - 1 ||
+                j % grid == 0 || j % grid == grid - 1;
+            p[0] = c.x;
+            p[1] = c.y;
+            p[2] = m ? 255 : c.z;
             p[3] = 255;
         }
     }
@@ -293,7 +299,9 @@ auto dump_png(vector<pixel_t> &img, int width, int height, string file) {
 int main(int argc, char *argv[]) {
     map<string, string> args;
     map<string, vector<string>> args_list;
-    args["dump-mode"] = "pointcloud";
+    args["dump-cast-mode"] = "pointcloud";
+    args["dump-render-axis"] = "xyz";
+    args["ext"] = "0.001";
     for (int i = 0; i < argc; i ++) {
         if (!strncmp(argv[i], "--", 2)) {
             auto key = argv[i] + 2;
@@ -379,12 +387,12 @@ int main(int argc, char *argv[]) {
     printf("INFO: loaded %zu faces with %zu vertices\n", mesh.faces.size(), mesh.verts.size());
 
     int dump_mode = 0;
-    if (args["dump-mode"] == "pointcloud") {
+    if (args["dump-cast-mode"] == "pointcloud") {
         dump_mode = 0;
-    } else if (args["dump-mode"] == "dexel") {
+    } else if (args["dump-cast-mode"] == "dexel") {
         dump_mode = 1;
     } else {
-        fprintf(stderr, "WARN: don't know how to dump %s, using pointcloud\n", args["dump-mode"].c_str());
+        fprintf(stderr, "WARN: don't know how to dump %s, using pointcloud\n", args["dump-cast-mode"].c_str());
     }
 
     int2 cast_pixels = { 2, 2 };
@@ -413,6 +421,7 @@ int main(int argc, char *argv[]) {
     cast_dexel_t dexels[3];
 
     auto dump_cast = args["dump-cast"];
+    auto ext = stod(args["ext"]);
     vector<double3> cast_points;
     for (int dir = 0; dir < 3; dir ++) {
         auto axis = ("xyz")[dir];
@@ -424,7 +433,7 @@ int main(int argc, char *argv[]) {
         auto cast_start = clock_now();
         auto joint_count = 0;
         device_group groups(face_groups);
-        auto &dexel = dexels[dir] = groups.cast(verts, cast_pixels);
+        auto &dexel = dexels[dir] = groups.cast(verts, cast_pixels, ext);
         joint_count += dexel.joints.size();
         if (dump_cast.size()) for (auto &v : dexel.get_verts(dump_mode)) {
             cast_points.push_back(v);
@@ -459,8 +468,9 @@ int main(int argc, char *argv[]) {
         dump_render = dump_render + "/";
     }
     vector<pixel_t> dump_buffer;
+    map<unsigned short, int3> dump_colors = { { 0xffff, { 0, 0, 0 } } };
+    auto dump_render_axis = args["dump-render-axis"];
     for (int dir = 0; dir < 3; dir ++) {
-        auto axis = ("xyz")[dir];
         auto sz = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir);
         auto width = sz.x * cast_pixels.x, height = sz.y * cast_pixels.x;
         device_vector points(dexels[dir].xs);
@@ -470,20 +480,21 @@ int main(int argc, char *argv[]) {
         device_vector joints(dexel.joints);
         device_vector<pixel_t> pixels(width * height);
 
+        auto axis = ("xyz")[dir];
         auto render_start = clock_now();
         for (int i = 0; i < sz.z; i ++) {
-            kernel_reset CU_DIM(1024, 128) (pixels, { 0 });
+            kernel_reset CU_DIM(1024, 128) (pixels, { 0xffff });
             auto start = i * cast_pixels.y * height;
-            kernel_render_dexel CU_DIM(height, 1024) (start, width, 1e-3, points, offset, joints, pixels);
+            kernel_render_dexel CU_DIM(height, 1024) (start, width, ext, points, offset, joints, pixels);
             CUDA_ASSERT(cudaGetLastError());
             if (start > height) {
-                kernel_render_dexel CU_DIM(height, 1024) (start - height, width, 1e-3, points, offset, joints, pixels);
+                kernel_render_dexel CU_DIM(height, 1024) (start - height, width, ext, points, offset, joints, pixels);
                 CUDA_ASSERT(cudaGetLastError());
             }
-            if (dump_render.size()) {
+            if (dump_render.size() && dump_render_axis.find(axis) != string::npos) {
                 pixels.copy_to(dump_buffer);
                 auto file = dump_render + string(1, axis) + "-" + to_string(i) + ".png";
-                dump_png(dump_buffer, width, height, file);
+                dump_png(dump_buffer, width, height, cast_pixels.x, file, dump_colors);
             }
         }
         CUDA_ASSERT(cudaDeviceSynchronize());

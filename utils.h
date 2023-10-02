@@ -4,29 +4,29 @@
 #include <cuda_runtime.h>
 
 template <typename T>
-__device__ __host__ auto rotate(T p, int d) {
+__device__ __host__ __forceinline__ auto rotate(T p, int d) {
     return d == 0 ? T { p.y, p.z, p.x } :
            d == 1 ? T { p.z, p.x, p.y } :
-                    T { p.x, p.y, p.z };
+                    p;
 }
 
 template <typename T>
-__device__ __host__ auto revert(T p, int d) {
+__device__ __host__ __forceinline__ auto revert(T p, int d) {
     return d == 0 ? T { p.z, p.x, p.y } :
            d == 1 ? T { p.y, p.z, p.x } :
-                    T { p.x, p.y, p.z };
+                    p;
 }
 
-__device__ __host__ inline auto fmin(double3 a, double3 b) {
+__device__ __host__ __forceinline__ auto fmin(double3 a, double3 b) {
     return double3 { ::fmin(a.x, b.x), ::fmin(a.y, b.y), ::fmin(a.z, b.z) };
 }
-__device__ __host__ inline auto fmin(double3 a, double3 b, double3 c) {
+__device__ __host__ __forceinline__ auto fmin(double3 a, double3 b, double3 c) {
     return fmin(fmin(a, b), c);
 }
-__device__ __host__ inline auto fmax(double3 a, double3 b) {
+__device__ __host__ __forceinline__ auto fmax(double3 a, double3 b) {
     return double3 { ::fmax(a.x, b.x), ::fmax(a.y, b.y), ::fmax(a.z, b.z) };
 }
-__device__ __host__ inline auto fmax(double3 a, double3 b, double3 c) {
+__device__ __host__ __forceinline__ auto fmax(double3 a, double3 b, double3 c) {
     return fmax(fmax(a, b), c);
 }
 
