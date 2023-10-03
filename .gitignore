@@ -3,3 +3,4 @@ data/
 *.exp
 *.exe
 *.pdb
+*.lib
