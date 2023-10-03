@@ -1,34 +1,11 @@
 #pragma once
 #include <stdlib.h>
 #include <stdio.h>
+
+#include <vector>
+#include <chrono>
+
 #include <cuda_runtime.h>
-
-template <typename T>
-__device__ __host__ __forceinline__ auto rotate(T p, int d) {
-    return d == 0 ? T { p.y, p.z, p.x } :
-           d == 1 ? T { p.z, p.x, p.y } :
-                    p;
-}
-
-template <typename T>
-__device__ __host__ __forceinline__ auto revert(T p, int d) {
-    return d == 0 ? T { p.z, p.x, p.y } :
-           d == 1 ? T { p.y, p.z, p.x } :
-                    p;
-}
-
-__device__ __host__ __forceinline__ auto fmin(double3 a, double3 b) {
-    return double3 { ::fmin(a.x, b.x), ::fmin(a.y, b.y), ::fmin(a.z, b.z) };
-}
-__device__ __host__ __forceinline__ auto fmin(double3 a, double3 b, double3 c) {
-    return fmin(fmin(a, b), c);
-}
-__device__ __host__ __forceinline__ auto fmax(double3 a, double3 b) {
-    return double3 { ::fmax(a.x, b.x), ::fmax(a.y, b.y), ::fmax(a.z, b.z) };
-}
-__device__ __host__ __forceinline__ auto fmax(double3 a, double3 b, double3 c) {
-    return fmax(fmax(a, b), c);
-}
 
 // https://stackoverflow.com/a/27992604
 #ifdef __INTELLISENSE__
@@ -66,6 +43,39 @@ extern size_t atomicAdd(size_t *, size_t);
 
 #define  CUDA_ASSERT(call) CALL_AND_ASSERT(call, cudaSuccess, cudaGetErrorString)
 
+namespace bocchi {
+
+using namespace std;
+
+template <typename T>
+__device__ __host__ __forceinline__ auto rotate(T p, int d) {
+    return d == 0 ? T { p.y, p.z, p.x } :
+           d == 1 ? T { p.z, p.x, p.y } :
+                    p;
+}
+
+template <typename T>
+__device__ __host__ __forceinline__ auto revert(T p, int d) {
+    return d == 0 ? T { p.z, p.x, p.y } :
+           d == 1 ? T { p.y, p.z, p.x } :
+                    p;
+}
+
+template <typename T>
+__device__ __host__ __forceinline__ auto fmin3(T a, T b) {
+    return T { fmin(a.x, b.x), fmin(a.y, b.y), fmin(a.z, b.z) };
+}
+__device__ __host__ __forceinline__ auto fmin3(double3 a, double3 b, double3 c) {
+    return fmin3(fmin3(a, b), c);
+}
+template <typename T>
+__device__ __host__ __forceinline__ auto fmax3(T a, T b) {
+    return T { fmax(a.x, b.x), fmax(a.y, b.y), fmax(a.z, b.z) };
+}
+__device__ __host__ __forceinline__ auto fmax3(double3 a, double3 b, double3 c) {
+    return fmax3(fmax3(a, b), c);
+}
+
 template <typename T>
 struct buffer {
     T *ptr = nullptr;
@@ -76,8 +86,12 @@ struct buffer {
     }
 };
 
-#include <vector>
-using std::vector;
+template <typename T>
+__global__ void kernel_reset(buffer<T> arr, T val) {
+    for (int i = cuIdx(x); i < arr.len; i += cuDim(x)) {
+        arr[i] = val;
+    }
+}
 
 template <typename T>
 struct device_vector : public buffer<T> {
@@ -128,14 +142,12 @@ struct device_vector : public buffer<T> {
     }
 };
 
-#include <chrono>
-
-using std::chrono::high_resolution_clock;
-using std::chrono::steady_clock;
 auto clock_now() {
-    return high_resolution_clock::now();
+    return chrono::high_resolution_clock::now();
 }
-auto seconds_since(steady_clock::time_point &start) {
-    std::chrono::duration<double> duration = clock_now() - start;
+auto seconds_since(chrono::steady_clock::time_point &start) {
+    chrono::duration<double> duration = clock_now() - start;
     return duration.count();
 }
+
+};
