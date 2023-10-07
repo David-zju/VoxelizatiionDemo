@@ -3,6 +3,7 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <float.h>
 
 #include "utils.h"
 #include "deps/json/single_include/nlohmann/json.hpp"

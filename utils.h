@@ -62,14 +62,14 @@ __device__ __host__ __forceinline__ auto revert(T p, int d) {
 }
 
 template <typename T>
-__device__ __host__ __forceinline__ auto fmin3(T a, T b) {
+__device__ __host__ __forceinline__ T fmin3(T a, T b) {
     return T { fmin(a.x, b.x), fmin(a.y, b.y), fmin(a.z, b.z) };
 }
 __device__ __host__ __forceinline__ auto fmin3(double3 a, double3 b, double3 c) {
     return fmin3(fmin3(a, b), c);
 }
 template <typename T>
-__device__ __host__ __forceinline__ auto fmax3(T a, T b) {
+__device__ __host__ __forceinline__ T fmax3(T a, T b) {
     return T { fmax(a.x, b.x), fmax(a.y, b.y), fmax(a.z, b.z) };
 }
 __device__ __host__ __forceinline__ auto fmax3(double3 a, double3 b, double3 c) {
@@ -95,6 +95,9 @@ __global__ void kernel_reset(buffer<T> arr, T val) {
 
 template <typename T>
 struct device_vector : public buffer<T> {
+    // Note: keep compatible with gcc
+    using buffer<T>::ptr;
+    using buffer<T>::len;
     device_vector(size_t capacity = 0) {
         ptr = nullptr;
         if (capacity) {

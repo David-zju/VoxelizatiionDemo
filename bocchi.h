@@ -110,17 +110,16 @@ auto operator<(const cast_joint_t &a, const cast_joint_t &b) {
 __global__ void kernel_cast_in_cells(
     buffer<double3> verts, buffer<int4> faces,
     buffer<double> xs, buffer<double> ys, int dir,
-    buffer<int> offset, double ext, double tol,
+    buffer<int> offset, double ext, double tol, int rpt,
     buffer<int> len, buffer<cast_joint_t> out) {
     int u = blockIdx.x, v = blockIdx.y, w = u + gridDim.x * v,
         begin = offset[w], end = offset[w + 1];
     if (u >= xs.len - 1 || v >= ys.len - 1) {
         return;
     }
-    int2 dim = { (int) blockDim.x * 2, (int) blockDim.y * 2 };
-    #pragma unroll
-    for (int i0 = 0; i0 < 2; i0 ++) for (int j0 = 0; j0 < 2; j0 ++) {
-        int i = threadIdx.x * 2 + i0, j = threadIdx.y * 2 + j0,
+    int2 dim = { (int) blockDim.x * rpt, (int) blockDim.y * rpt };
+    for (int i0 = 0; i0 < rpt; i0 ++) for (int j0 = 0; j0 < rpt; j0 ++) {
+        int i = threadIdx.x * rpt + i0, j = threadIdx.y * rpt + j0,
             k = i + u * dim.x + (j + v * dim.y) * gridDim.x * dim.x;
         double2 p = {
             lerp(xs[u], xs[u + 1], lerp(ext, 1 - ext, 1. * i / (dim.x - 1))),
@@ -208,13 +207,15 @@ struct device_group {
         offset(group.offset), faces(group.faces) {
     }
     auto cast(device_vector<double3> &verts, int2 dim, double ext = 1e-3) {
+        // Note: RPT IS NOT REPEAT but Ray-Per-Thread
+        int rpt = dim.x * dim.y > 1024 ? 2 : 1;
         dim3 gridDim((int) xs.len, (int) ys.len, 1),
-             blockDim(dim.x / 2, dim.y / 2, 1);
+             blockDim(dim.x / rpt, dim.y / rpt, 1);
 
         cast_dexel_t ret { dir, ext, dim, xs.copy(), ys.copy() };
         ret.offset.resize(xs.len * ys.len * dim.x * dim.y + 1);
         device_vector len(ret.offset);
-        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, len, { });
+        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, { });
         CUDA_ASSERT(cudaGetLastError());
 
         len.copy_to(ret.offset);
@@ -222,7 +223,7 @@ struct device_group {
         device_vector<cast_joint_t> out(ret.offset.back());
 
         len.copy_from(ret.offset);
-        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, len, out);
+        kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, out);
         CUDA_ASSERT(cudaGetLastError());
 
         out.copy_to(ret.joints);
