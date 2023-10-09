@@ -236,21 +236,26 @@ struct pixel_t {
     unsigned short geom;
 };
 __global__ void kernel_render_dexel(
-        int start, int width, double ext,
+        int dir, int start, int stride,
+        int width, int height, double ext,
         buffer<double> points,
         buffer<int> offset, buffer<cast_joint_t> joints,
         buffer<pixel_t> out) {
-    int j = blockIdx.x, w = start + j,
+    int j = blockIdx.x, w = start + j * stride,
         begin = offset[w], end = offset[w + 1],
-        ns = width / points.len;
-    for (int i = threadIdx.x, n = ns * (points.len - 1); i < n; i += blockDim.x) {
-        auto u = i / ns, v = i % ns;
+        pixels = dir == 0 ? width : height,
+        ns = pixels / points.len;
+    for (int i = threadIdx.x; i < pixels; i += blockDim.x) {
+        auto u = i / ns, v = i % ns, k = dir == 0 ? i + j * width : i * width + j;
+        if (u + 1 > points.len) {
+            continue;
+        }
         auto pos = lerp(points[u], points[u + 1], lerp(ext, 1 - ext, 1. * v / (ns - 1)));
         for (int q = begin; q < end - 1; q ++) {
             auto &a = joints[q], &b = joints[q + 1];
             if (a.geom == b.geom) {
                 if (ordered(a.pos, pos, b.pos)) {
-                    out[i + j * width] = { a.geom };
+                    out[k] = { a.geom };
                 }
                 q ++;
             }
