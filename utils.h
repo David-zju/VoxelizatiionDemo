@@ -148,7 +148,7 @@ struct device_vector : public buffer<T> {
 auto clock_now() {
     return chrono::high_resolution_clock::now();
 }
-auto seconds_since(chrono::steady_clock::time_point &start) {
+auto seconds_since(chrono::high_resolution_clock::time_point &start) {
     chrono::duration<double> duration = clock_now() - start;
     return duration.count();
 }
