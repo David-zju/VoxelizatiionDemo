@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
         auto width = sz.x * cast_pixels.x, height = sz.y * cast_pixels.x;
         device_vector xs(dexels[dir][0].xs), ys(dexels[dir][0].ys);
         auto &d0 = dexels[dir == 0 ? 1 : dir == 1 ? 2 : 0][0],
-             &d1 = dexels[dir == 0 ? 2 : dir == 1 ? 0 : 1][1];
+             &d1 = dexels[dir == 0 ? 2 : dir == 1 ? 0 : 1][cast_pixels.x == cast_pixels.y ? 0 : 1];
         device_vector offset0(d0.offset), offset1(d1.offset);
         device_vector joints0(d0.joints), joints1(d1.joints);
         device_vector<pixel_t> pixels(width * height);

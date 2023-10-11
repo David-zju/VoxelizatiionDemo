@@ -1,6 +1,10 @@
 #pragma once
 
 #include <thread>
+
+#include <thrust/scan.h>
+#include <thrust/execution_policy.h>
+
 #include "deps/lodepng/lodepng.h"
 #include "geom.h"
 
@@ -51,11 +55,9 @@ auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &face
     kernel_get_faces_in_cells CU_DIM(1024, 128) (verts, faces, xs, ys, dir, offset, { });
     CUDA_ASSERT(cudaGetLastError());
 
+    thrust::exclusive_scan(thrust::device, offset.ptr, offset.ptr + offset.len, offset.ptr);
     offset.copy_to(ret.offset);
-    exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
     device_vector<int4> out(ret.offset.back());
-
-    offset.copy_from(ret.offset);
     kernel_get_faces_in_cells CU_DIM(1024, 128) (verts, faces, xs, ys, dir, offset, out);
     CUDA_ASSERT(cudaGetLastError());
 
@@ -218,11 +220,9 @@ struct device_group {
         kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, { });
         CUDA_ASSERT(cudaGetLastError());
 
+        thrust::exclusive_scan(thrust::device, len.ptr, len.ptr + len.len, len.ptr);
         len.copy_to(ret.offset);
-        exclusive_scan(ret.offset.begin(), ret.offset.end(), ret.offset.begin(), 0);
         device_vector<cast_joint_t> out(ret.offset.back());
-
-        len.copy_from(ret.offset);
         kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, out);
         CUDA_ASSERT(cudaGetLastError());
 
