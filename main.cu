@@ -43,6 +43,23 @@ int main(int argc, char *argv[]) {
             exit(-1);
         }
     }
+    for (auto &[axis, ref] : map<string, reference_wrapper<vector<double>>>({
+        { "x", ref(grid.xs) },
+        { "y", ref(grid.ys) },
+        { "z", ref(grid.zs) }
+    })) {
+        auto &arr = ref.get();
+        auto key = "load-grid-" + axis;
+        if (args_list.count(key)) {
+            arr.resize(0);
+            for (auto list : args_list[key]) {
+                double val;
+                replace(list.begin(), list.end(), ',', ' ');
+                stringstream ss(list);
+                while (ss >> val) arr.push_back(val);
+            }
+        }
+    }
     for (auto _ : args_list["grid-add-midpoint"]) {
         grid.xs = add_midpoint(grid.xs);
         grid.ys = add_midpoint(grid.ys);
@@ -50,6 +67,9 @@ int main(int argc, char *argv[]) {
     }
     auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
     printf("INFO: loaded %zu x %zu x %zu (%zu) grids\n", nx, ny, nz, nx * ny * nz);
+    if (nx < 2 || ny < 2 || nz < 2) {
+        fprintf(stderr, "FATAL: grid line on each axis should be larger than 2\n");
+    }
 
     mesh_t mesh;
     int geom_start = 0;
@@ -90,7 +110,7 @@ int main(int argc, char *argv[]) {
         vector<int> geoms;
         string geom_list;
         for (auto list : args_list["mesh-geometry"]) {
-            geom_list += list;
+            geom_list += "," + list;
             replace(list.begin(), list.end(), ',', ' ');
             int val;
             stringstream ss(list);
@@ -202,16 +222,18 @@ int main(int argc, char *argv[]) {
 
         auto axis = ("xyz")[dir];
         auto render_start = clock_now();
-        for (int i = 1, start, stride; i < sz.z; i ++) {
+        for (int i = 0, start, stride; i < sz.z; i ++) {
             kernel_reset CU_DIM(1024, 128) (pixels, { 0xffff });
             start = i * cast_pixels.y * height; stride = 1;
             kernel_render_dexel CU_DIM(height, 1024) (0, start, stride, width, height, ext, xs, offset0, joints0, pixels);
-            start -= height;
-            kernel_render_dexel CU_DIM(height, 1024) (0, start, stride, width, height, ext, xs, offset0, joints0, pixels);
+            if (start -= height > 0) {
+                kernel_render_dexel CU_DIM(height, 1024) (0, start, stride, width, height, ext, xs, offset0, joints0, pixels);
+            }
             start = i * cast_pixels.y; stride = cast_pixels.y * sz.z;
             kernel_render_dexel CU_DIM(width,  1024) (1, start, stride, width, height, ext, ys, offset1, joints1, pixels);
-            start -= 1;
-            kernel_render_dexel CU_DIM(width,  1024) (1, start, stride, width, height, ext, ys, offset1, joints1, pixels);
+            if (start -= 1 > 0) {
+                kernel_render_dexel CU_DIM(width,  1024) (1, start, stride, width, height, ext, ys, offset1, joints1, pixels);
+            }
             if (dump_render.size() && dump_render_axis.find(axis) != string::npos) {
                 pixels.copy_to(dump_buffer);
                 auto file = dump_render + string(1, axis) + "-" + to_string(i) + ".png";
