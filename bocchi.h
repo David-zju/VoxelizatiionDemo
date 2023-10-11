@@ -114,7 +114,7 @@ __global__ void kernel_cast_in_cells(
     buffer<int> len, buffer<cast_joint_t> out) {
     int u = blockIdx.x, v = blockIdx.y, w = u + gridDim.x * v,
         begin = offset[w], end = offset[w + 1];
-    if (u >= xs.len - 1 || v >= ys.len - 1) {
+    if (u + 1 >= xs.len || v + 1 >= ys.len) {
         return;
     }
     int2 dim = { (int) blockDim.x * rpt, (int) blockDim.y * rpt };
@@ -247,7 +247,7 @@ __global__ void kernel_render_dexel(
         ns = pixels / points.len;
     for (int i = threadIdx.x; i < pixels; i += blockDim.x) {
         auto u = i / ns, v = i % ns, k = dir == 0 ? i + j * width : i * width + j;
-        if (u + 1 > points.len) {
+        if (u + 1 >= points.len) {
             continue;
         }
         auto pos = lerp(points[u], points[u + 1], lerp(ext, 1 - ext, 1. * v / (ns - 1)));
