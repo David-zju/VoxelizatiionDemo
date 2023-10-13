@@ -155,6 +155,13 @@ int main(int argc, char *argv[]) {
     }
     printf("INFO: using pixel size %d x %d\n", cast_pixels.x, cast_pixels.y);
 
+    // Note: disabled at present
+    if (0) {
+        trace_t tracer(mesh, grid);
+        tracer.render("data/x.png");
+        return 0;
+    }
+
     auto all_start = clock_now();
     device_vector verts(mesh.verts);
     device_vector faces(mesh.faces);
@@ -175,6 +182,7 @@ int main(int argc, char *argv[]) {
         device_group groups(face_groups);
         auto &dexel = dexels[dir][0] = groups.cast(verts, cast_pixels, ext);
         joint_count += dexel.joints.size();
+        /*
         if (dump_cast.size()) for (auto &v : dexel.get_verts(dump_mode)) {
             cast_points.push_back(v);
         }
@@ -185,6 +193,7 @@ int main(int argc, char *argv[]) {
                 cast_points.push_back(v);
             }
         }
+         */
         printf("PERF: on %c cast %d in %f s\n", axis, joint_count, seconds_since(cast_start));
     }
     if (dump_cast.size()) {
@@ -222,6 +231,7 @@ int main(int argc, char *argv[]) {
 
         auto axis = ("xyz")[dir];
         auto render_start = clock_now();
+        /*
         for (int i = 0, start, stride; i < sz.z; i ++) {
             kernel_reset CU_DIM(1024, 128) (pixels, { 0xffff });
             start = i * cast_pixels.y * height; stride = 1;
@@ -242,6 +252,7 @@ int main(int argc, char *argv[]) {
             }
         }
         CUDA_ASSERT(cudaDeviceSynchronize());
+         */
         printf("PERF: on %c render %d in %f s\n", axis, sz.z, seconds_since(render_start));
     }
     printf("PERF: render done in %f s\n", seconds_since(all_start));

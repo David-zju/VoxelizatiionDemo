@@ -78,8 +78,8 @@ __device__ __host__ __forceinline__ auto fmax3(double3 a, double3 b, double3 c) 
 
 template <typename T>
 struct buffer {
-    T *ptr = nullptr;
-    size_t len = 0;
+    T *ptr;
+    size_t len;
     __device__ __host__ __forceinline__
     auto &operator[](int i) {
         return ptr[i];
@@ -100,12 +100,14 @@ struct device_vector : public buffer<T> {
     using buffer<T>::len;
     device_vector(size_t capacity = 0) {
         ptr = nullptr;
+        len = 0;
         if (capacity) {
             resize(capacity);
         }
     }
     device_vector(vector<T> &vec) {
         ptr = nullptr;
+        len = 0;
         auto capacity = vec.size();
         if (capacity) {
             resize(capacity);
@@ -121,7 +123,7 @@ struct device_vector : public buffer<T> {
         }
         len = capacity;
     }
-    auto copy() {
+    auto to_host() {
         vector<T> vec(len);
         return copy_to(vec);
     }
@@ -130,10 +132,27 @@ struct device_vector : public buffer<T> {
         CUDA_ASSERT(cudaMemcpy(vec.data(), ptr, len * sizeof(T), cudaMemcpyDefault));
         return vec;
     }
+    auto copy_to(T *vec) {
+        CUDA_ASSERT(cudaMemcpy(vec, ptr, len * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
+    auto copy_to(T *vec, size_t num) {
+        CUDA_ASSERT(cudaMemcpy(vec, ptr, num * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
     auto &copy_from(vector<T> &vec) {
         auto len = vec.size();
         resize(len);
         CUDA_ASSERT(cudaMemcpy(ptr, vec.data(), len * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
+    auto copy_from(T *vec) {
+        CUDA_ASSERT(cudaMemcpy(ptr, vec, len * sizeof(T), cudaMemcpyDefault));
+        return vec;
+    }
+    auto copy_from(T *vec, size_t len) {
+        resize(len);
+        CUDA_ASSERT(cudaMemcpy(ptr, vec, len * sizeof(T), cudaMemcpyDefault));
         return vec;
     }
     ~device_vector() {

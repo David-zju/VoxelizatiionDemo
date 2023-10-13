@@ -7,9 +7,39 @@
 
 #include "deps/lodepng/lodepng.h"
 #include "geom.h"
+#include "trace.h"
 
 namespace bocchi {
 
+__host__ __device__ __forceinline__ auto lerp(double a, double b, double f) {
+    return a + (b - a) * f;
+}
+__host__ __device__ __forceinline__ auto interp(double2 a, double2 b, double x) {
+    auto f = (x - a.x) / (b.x - a.x);
+    return lerp(a.y, b.y, f);
+}
+__host__ __device__ __forceinline__ auto interp(double3 a, double3 b, double x) {
+    auto f = (x - a.x) / (b.x - a.x);
+    return double2 { lerp(a.y, b.y, f), lerp(a.z, b.z, f) };
+}
+__host__ __device__ __forceinline__ auto point_in_plane(double2 p, double3 A, double3 B, double3 C, int dir, double tol) {
+    double2 u = { 0 }, v = { 0 };
+    auto a = rotate(A, dir), b = rotate(B, dir), c = rotate(C, dir);
+    auto AB = a.x != b.x,
+         BC = b.x != c.x,
+         CA = c.x != a.x;
+    if (CA && AB) {
+        u = interp(a, b, p.x); v = interp(a, c, p.x);
+    } else if (AB && BC) {
+        u = interp(b, c, p.x); v = interp(b, a, p.x);
+    } else if (BC && CA) {
+        u = interp(c, a, p.x); v = interp(c, b, p.x);
+    }
+    if (u.x != v.x) {
+        return interp(u, v, p.y);
+    }
+    return DBL_MAX;
+}
 __global__ void kernel_get_faces_in_cells(
     buffer<double3> verts, buffer<int4> faces,
     buffer<double> xs, buffer<double> ys, int dir,
@@ -65,17 +95,6 @@ auto get_faces_in_cells(device_vector<double3> &verts, device_vector<int4> &face
     return ret;
 }
 
-__host__ __device__ __forceinline__ auto lerp(double a, double b, double f) {
-    return a + (b - a) * f;
-}
-__host__ __device__ __forceinline__ auto interp(double2 a, double2 b, double x) {
-    auto f = (x - a.x) / (b.x - a.x);
-    return lerp(a.y, b.y, f);
-}
-__host__ __device__ __forceinline__ auto interp(double3 a, double3 b, double x) {
-    auto f = (x - a.x) / (b.x - a.x);
-    return double2 { lerp(a.y, b.y, f), lerp(a.z, b.z, f) };
-}
 __host__ __device__ __forceinline__ auto ordered(double x0, double x, double x1) {
     return x0 != x1 && ((x0 <= x && x <= x1) || (x1 <= x && x <= x0));
 }
@@ -103,12 +122,15 @@ __host__ __device__ __forceinline__ auto point_in_triangle(double2 p, double3 A,
 }
 
 struct cast_joint_t {
-    unsigned short geom;
-    float pos;
+    unsigned char face;
+    //unsigned short face;
+    //float pos;
 };
+/*
 auto operator<(const cast_joint_t &a, const cast_joint_t &b) {
     return a.geom == b.geom ? a.pos < b.pos : a.geom < b.geom;
 }
+ */
 __global__ void kernel_cast_in_cells(
     buffer<double3> verts, buffer<int4> faces,
     buffer<double> xs, buffer<double> ys, int dir,
@@ -127,16 +149,22 @@ __global__ void kernel_cast_in_cells(
             lerp(xs[u], xs[u + 1], lerp(ext, 1 - ext, 1. * i / (dim.x - 1))),
             lerp(ys[v], ys[v + 1], lerp(ext, 1 - ext, 1. * j / (dim.y - 1))),
         };
+        auto next = len[k];
         for (int n = begin; n < end; n ++) {
             auto face = faces[n];
             auto pos = point_in_triangle(p, verts[face.x], verts[face.y], verts[face.z], dir, tol);
             if (pos != DBL_MAX) {
+                /*
                 auto next = atomicAdd(len.ptr + k, 1);
                 if (next < out.len) {
-                    out[next] = { (unsigned short) face.w, (float) pos };
+                    //out[next] = { (unsigned short) face.w, (float) pos };
+                    out[next] = { (unsigned char) n };
                 }
+                 */
+                next ++;
             }
         }
+        len[k] = next;
     }
 }
 
@@ -147,6 +175,7 @@ struct cast_dexel_t {
     vector<double> xs, ys;
     vector<int> offset;
     vector<cast_joint_t> joints;
+    /*
     auto sort_joints(int num = thread::hardware_concurrency()) {
         vector<thread> pool;
         for (int i = 0, j = num; i < j; i ++) {
@@ -196,6 +225,7 @@ struct cast_dexel_t {
         auto verts = get_verts(mode);
         dump_gltf(verts, file, mode);
     }
+     */
 };
 struct device_group {
     int dir;
@@ -214,7 +244,7 @@ struct device_group {
         dim3 gridDim((int) xs.len, (int) ys.len, 1),
              blockDim(dim.x / rpt, dim.y / rpt, 1);
 
-        cast_dexel_t ret { dir, ext, dim, xs.copy(), ys.copy() };
+        cast_dexel_t ret { dir, ext, dim, xs.to_host(), ys.to_host() };
         ret.offset.resize(xs.len * ys.len * dim.x * dim.y + 1);
         device_vector len(ret.offset);
         kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, { });
@@ -227,7 +257,7 @@ struct device_group {
         CUDA_ASSERT(cudaGetLastError());
 
         out.copy_to(ret.joints);
-        ret.sort_joints();
+        //ret.sort_joints();
         return ret;
     }
 };
@@ -235,6 +265,7 @@ struct device_group {
 struct pixel_t {
     unsigned short geom;
 };
+/*
 __global__ void kernel_render_dexel(
         int dir, int start, int stride,
         int width, int height, double ext,
@@ -262,6 +293,7 @@ __global__ void kernel_render_dexel(
         }
     }
 }
+ */
 auto dump_png(vector<pixel_t> &img, int width, int height, int grid, string file, map<unsigned short, int3> &colors) {
     vector<unsigned char> buf(width * height * 4);
     for (int i = 0; i < width; i ++) {
