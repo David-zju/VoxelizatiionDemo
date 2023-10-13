@@ -4,3 +4,8 @@ data/
 *.exe
 *.pdb
 *.lib
+.*
+build/
+cmake-*
+models/
+plot/

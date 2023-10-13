@@ -214,7 +214,8 @@ struct device_group {
 
         cast_dexel_t ret { dir, ext, dim, xs.copy(), ys.copy() };
         ret.offset.resize(xs.len * ys.len * dim.x * dim.y + 1);
-        device_vector len(ret.offset);
+        device_vector len(ret.offset.size());
+        kernel_reset CU_DIM(1024,128) (len, 0);
         kernel_cast_in_cells CU_DIM(gridDim, blockDim) (verts, faces, xs, ys, dir, offset, ext, tol, rpt, len, { });
         CUDA_ASSERT(cudaGetLastError());
 
