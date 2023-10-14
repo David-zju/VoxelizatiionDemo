@@ -240,12 +240,14 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+    printf("INFO: got %zu chunks\n", chunks.size());
 
+    device_tri_dexels_t dexels(casted);
     device_vector<pixel_t> out[3];
-    all_start = clock_now();
+    auto render_start = clock_now();
     for (auto chunk_pos : chunks) {
         auto render_start = clock_now();
-        casted.render(out, chunk_pos, chunk_size);
+        dexels.render(out, chunk_pos, chunk_size);
         auto chunk_index = to_string(chunk_pos.x) + "_" + to_string(chunk_pos.y) + "_" + to_string(chunk_pos.z);
         if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
             auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
@@ -262,9 +264,9 @@ int main(int argc, char *argv[]) {
                 printf("INFO: dumped png to %s\n", file.c_str());
             }
         }
-        printf("PERF: render chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(all_start));
+        printf("PERF: render chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(render_start));
     }
-    printf("PERF: render done in %f s\n", seconds_since(all_start));
+    printf("PERF: render done in %f s\n", seconds_since(render_start));
 
     return 0;
 }

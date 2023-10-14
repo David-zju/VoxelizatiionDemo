@@ -317,6 +317,39 @@ struct tri_dexels_t {
     int2 sample;
     double ext;
     cast_dexel_t dexels[3][2];
+};
+
+struct device_dexel_t {
+    int dir;
+    double ext;
+    int2 dim;
+    device_vector<double> xs, ys;
+    device_vector<int> offset;
+    device_vector<cast_joint_t> joints;
+};
+struct device_tri_dexels_t {
+    grid_t grid;
+    int2 sample;
+    double ext;
+    device_dexel_t dexels[3][2];
+    device_tri_dexels_t(tri_dexels_t &input) {
+        grid = input.grid;
+        sample = input.sample;
+        ext = input.ext;
+        for (int i = 0; i < 3; i ++) {
+            for (int j = 0; j < 2; j ++) {
+                auto &src = input.dexels[i][j];
+                auto &dst = dexels[i][j];
+                dst.dir = src.dir;
+                dst.ext = src.ext;
+                dst.dim = src.dim;
+                dst.xs.copy_from(src.xs);
+                dst.ys.copy_from(src.ys);
+                dst.offset.copy_from(src.offset);
+                dst.joints.copy_from(src.joints);
+            }
+        }
+    }
     auto render(device_vector<pixel_t> out[3], int3 chunk_pos, int3 chunk_size) {
         auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
         for (int dir = 0; dir < 3; dir ++) {
@@ -325,13 +358,12 @@ struct tri_dexels_t {
                  pos  = rotate(chunk_pos, dir),
                  dim  = rotate(chunk_size, dir),
                  size = int3 { dim.x * sample.x, dim.y * sample.x, dim.z };
-            device_vector xs(dexels[dir][0].xs), ys(dexels[dir][0].ys);
-
-            // TODO: reuse device_vector
+            auto &xs = dexels[dir][0].xs,
+                 &ys = dexels[dir][0].ys;
             auto &d0 = dexels[idx.x][0],
                  &d1 = dexels[idx.y][sample.x == sample.y ? 0 : 1];
-            device_vector offset0(d0.offset), offset1(d1.offset);
-            device_vector joints0(d0.joints), joints1(d1.joints);
+            auto &offset0 = d0.offset, &offset1 = d1.offset;
+            auto &joints0 = d0.joints, &joints1 = d1.joints;
             out[dir].resize(size.x * size.y * size.z);
 
             auto axis = ("xyz")[dir];
@@ -352,7 +384,9 @@ struct tri_dexels_t {
                 }
             }
             CUDA_ASSERT(cudaDeviceSynchronize());
-            printf("PERF: on %c render %d in %f s\n", axis, dim.z, seconds_since(render_start));
+            if (0) {
+                printf("PERF: on %c render %d x %d x %d in %f s\n", axis, size.x, size.y, size.z, seconds_since(render_start));
+            }
         }
     }
 };
