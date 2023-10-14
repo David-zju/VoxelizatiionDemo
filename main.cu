@@ -238,14 +238,14 @@ int main(int argc, char *argv[]) {
     device_tri_dexels_t dexels(casted);
     device_chunk_t chunk;
     auto render_start = clock_now();
-    for (auto chunk_pos : chunks) {
+    for (auto pos : chunks) {
         auto render_start = clock_now();
-        dexels.render(chunk, chunk_pos, chunk_size);
-        auto chunk_index = to_string(chunk_pos.x) + "_" + to_string(chunk_pos.y) + "_" + to_string(chunk_pos.z);
+        dexels.render(chunk, pos, chunk_size);
+        auto chunk_index = to_string(pos.x) + "_" + to_string(pos.y) + "_" + to_string(pos.z);
         if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
             auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
-                 pos  = rotate(chunk_pos, dir),
-                 dim  = rotate(chunk_size, dir),
+                 pos  = rotate(chunk.pos, dir),
+                 dim  = rotate(chunk.size, dir),
                  size = int3 { dim.x * cast_pixels.x, dim.y * cast_pixels.x, dim.z };
             vector<pixel_t> pixels(size.x * size.y);
             auto axis = ("xyz")[dir];

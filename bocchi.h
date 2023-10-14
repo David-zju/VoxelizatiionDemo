@@ -260,10 +260,10 @@ __global__ void kernel_render_dexel(
         buffer<int> offset, buffer<cast_joint_t> joints,
         buffer<pixel_t> out) {
     int j = blockIdx.x, w = delta.x + j * delta.y,
-        begin = w + 1 < offset.len ? offset[w] : 0,
-        end   = w + 1 < offset.len ? offset[w + 1] : 0,
+        begin = w >= 0 && w + 1 < offset.len ? offset[w    ] : 0,
+        end   = w >= 0 && w + 1 < offset.len ? offset[w + 1] : 0,
         pixels = dir == 0 ? size.x : size.y;
-    for (int i = threadIdx.x; i < pixels; i += blockDim.x) {
+    if (begin < end) for (int i = threadIdx.x; i < pixels; i += blockDim.x) {
         auto u = i / ns + (dir == 0 ? pos.x : pos.y), v = i % ns,
              k = dir == 0 ? i + j * size.x : i * size.x + j;
         if (u + 1 < points.len) {
@@ -318,7 +318,7 @@ struct tri_dexels_t {
     cast_dexel_t dexels[3][2];
 };
 struct device_chunk_t {
-    int3 size;
+    int3 pos, size;
     int2 sample;
     device_vector<pixel_t> pixels[3];
     auto parse() {
@@ -370,16 +370,19 @@ struct device_tri_dexels_t {
         }
     }
     auto render(device_chunk_t &chunk, int3 pos, int3 size) {
-        auto chunk_pos = pos, chunk_size = size;
         auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
-        chunk.size = size;
+        chunk.pos = pos;
+        chunk.size = {
+            min(size.x, (int) nx - pos.x),
+            min(size.y, (int) ny - pos.y),
+            min(size.z, (int) nz - pos.z),
+        };
         chunk.sample = sample;
-        auto &out = chunk.pixels;
         for (int dir = 0; dir < 3; dir ++) {
             auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
                  idx  = rotate(int3 { 0, 1, 2 }, dir),
-                 pos  = rotate(chunk_pos, dir),
-                 dim  = rotate(chunk_size, dir),
+                 pos  = rotate(chunk.pos, dir),
+                 dim  = rotate(chunk.size, dir),
                  size = int3 { dim.x * sample.x, dim.y * sample.x, dim.z };
             auto &xs = dexels[dir][0].xs,
                  &ys = dexels[dir][0].ys;
@@ -387,27 +390,25 @@ struct device_tri_dexels_t {
                  &d1 = dexels[idx.y][sample.x == sample.y ? 0 : 1];
             auto &offset0 = d0.offset, &offset1 = d1.offset;
             auto &joints0 = d0.joints, &joints1 = d1.joints;
-            out[dir].resize(size.x * size.y * size.z);
+            auto &out = chunk.pixels[dir];
+            out.resize(size.x * size.y * size.z);
+            kernel_reset CU_DIM(1024, 128) (out, { 0xffff });
 
-            auto axis = ("xyz")[dir];
             auto render_start = clock_now();
-            auto render_size = int2 { min(dim.x, gsz.x - pos.x) * sample.x, min(dim.y, gsz.y - pos.y) * sample.x };
             for (int i = pos.z, j = 0; i < gsz.z && j < dim.z; i ++, j ++) {
-                buffer<pixel_t> pixels = { out[dir].ptr + j * size.x * size.y, (unsigned) size.x * size.y };
-                kernel_reset CU_DIM(1024, 128) (pixels, { 0xffff });
+                buffer<pixel_t> pixels = { out.ptr + j * size.x * size.y, (unsigned) size.x * size.y };
                 int2 delta = { i * sample.y * gsz.y * sample.x + pos.y * sample.x, 1 };
-                kernel_render_dexel CU_DIM(render_size.y, 1024) (0, sample.x, delta, pos, size, ext, xs, offset0, joints0, pixels);
-                if (delta.x -= gsz.y * sample.x > 0) {
-                    kernel_render_dexel CU_DIM(render_size.y, 1024) (0, sample.x, delta, pos, size, ext, xs, offset0, joints0, pixels);
-                }
+                kernel_render_dexel CU_DIM(size.y, 1024) (0, sample.x, delta, pos, size, ext, xs, offset0, joints0, pixels);
+                delta.x -= gsz.y * sample.x;
+                kernel_render_dexel CU_DIM(size.y, 1024) (0, sample.x, delta, pos, size, ext, xs, offset0, joints0, pixels);
                 delta = { i * sample.y + pos.x * sample.y * gsz.z * sample.x, sample.y * gsz.z };
-                kernel_render_dexel CU_DIM(render_size.x,  1024) (1, sample.x, delta, pos, size, ext, ys, offset1, joints1, pixels);
-                if (delta.x -= 1 > 0) {
-                    kernel_render_dexel CU_DIM(render_size.x,  1024) (1, sample.x, delta, pos, size, ext, ys, offset1, joints1, pixels);
-                }
+                kernel_render_dexel CU_DIM(size.x, 1024) (1, sample.x, delta, pos, size, ext, ys, offset1, joints1, pixels);
+                delta.x -= 1;
+                kernel_render_dexel CU_DIM(size.x, 1024) (1, sample.x, delta, pos, size, ext, ys, offset1, joints1, pixels);
             }
             CUDA_ASSERT(cudaDeviceSynchronize());
             if (0) {
+                auto axis = ("xyz")[dir];
                 printf("PERF: on %c render %d x %d x %d in %f s\n", axis, size.x, size.y, size.z, seconds_since(render_start));
             }
         }
