@@ -136,8 +136,8 @@ struct device_vector : public buffer<T> {
         CUDA_ASSERT(cudaMemcpy(vec, ptr, len * sizeof(T), cudaMemcpyDefault));
         return vec;
     }
-    auto copy_to(T *vec, size_t num) {
-        CUDA_ASSERT(cudaMemcpy(vec, ptr, num * sizeof(T), cudaMemcpyDefault));
+    auto copy_to(T *vec, size_t num, size_t offset = 0) {
+        CUDA_ASSERT(cudaMemcpy(vec, ptr + offset, num * sizeof(T), cudaMemcpyDefault));
         return vec;
     }
     auto &copy_from(vector<T> &vec) {

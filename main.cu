@@ -165,11 +165,11 @@ int main(int argc, char *argv[]) {
     auto all_start = clock_now();
     device_vector verts(mesh.verts);
     device_vector faces(mesh.faces);
-    cast_dexel_t dexels[3][2];
 
     auto dump_cast = args["dump-cast"];
     auto ext = stod(args["ext"]);
     vector<double3> cast_points;
+    tri_dexels_t casted { grid, cast_pixels, ext };
     for (int dir = 0; dir < 3; dir ++) {
         auto axis = ("xyz")[dir];
 
@@ -180,13 +180,14 @@ int main(int argc, char *argv[]) {
         auto cast_start = clock_now();
         auto joint_count = 0;
         device_group groups(face_groups);
-        auto &dexel = dexels[dir][0] = groups.cast(verts, cast_pixels, ext);
+        auto &dexels = casted.dexels[dir];
+        auto &dexel = dexels[0] = groups.cast(verts, cast_pixels, ext);
         joint_count += dexel.joints.size();
         if (dump_cast.size()) for (auto &v : dexel.get_verts(dump_mode)) {
             cast_points.push_back(v);
         }
         if (cast_pixels.x != cast_pixels.y) {
-            auto &dexel = dexels[dir][1] = groups.cast(verts, { cast_pixels.y, cast_pixels.x }, ext);
+            auto &dexel = dexels[1] = groups.cast(verts, { cast_pixels.y, cast_pixels.x }, ext);
             joint_count += dexel.joints.size();
             if (dump_cast.size()) for (auto &v : dexel.get_verts(dump_mode)) {
                 cast_points.push_back(v);
@@ -208,48 +209,46 @@ int main(int argc, char *argv[]) {
     }
     printf("PERF: cast done in %f s\n", seconds_since(all_start));
 
-    all_start = clock_now();
     auto dump_render = args["dump-render"];
     replace(dump_render.begin(), dump_render.end(), '\\', '/');
     if (dump_render.size() && dump_render.back() != '/') {
         dump_render = dump_render + "/";
     }
-    vector<pixel_t> dump_buffer;
     map<unsigned short, int3> dump_colors = { { 0xffff, { 0, 0, 0 } } };
     auto dump_render_axis = args["dump-render-axis"];
-    for (int dir = 0; dir < 3; dir ++) {
-        auto sz = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir);
-        auto width = sz.x * cast_pixels.x, height = sz.y * cast_pixels.x;
-        device_vector xs(dexels[dir][0].xs), ys(dexels[dir][0].ys);
-        auto &d0 = dexels[dir == 0 ? 1 : dir == 1 ? 2 : 0][0],
-             &d1 = dexels[dir == 0 ? 2 : dir == 1 ? 0 : 1][cast_pixels.x == cast_pixels.y ? 0 : 1];
-        device_vector offset0(d0.offset), offset1(d1.offset);
-        device_vector joints0(d0.joints), joints1(d1.joints);
-        device_vector<pixel_t> pixels(width * height);
 
-        auto axis = ("xyz")[dir];
+    int3 chunk_size = { 128, 128, 8 };
+    vector<int3> chunks;
+    for (int i = 0; i < nx; i += chunk_size.x) {
+        for (int j = 0; j < ny; j += chunk_size.y) {
+            for (int k = 0; k < nz; k += chunk_size.z) {
+                chunks.push_back({ i, j, k });
+            }
+        }
+    }
+
+    device_vector<pixel_t> out[3];
+    all_start = clock_now();
+    for (auto chunk_pos : chunks) {
         auto render_start = clock_now();
-        for (int i = 0, start, stride; i < sz.z; i ++) {
-            kernel_reset CU_DIM(1024, 128) (pixels, { 0xffff });
-            start = i * cast_pixels.y * height; stride = 1;
-            kernel_render_dexel CU_DIM(height, 1024) (0, start, stride, width, height, ext, xs, offset0, joints0, pixels);
-            if (start -= height > 0) {
-                kernel_render_dexel CU_DIM(height, 1024) (0, start, stride, width, height, ext, xs, offset0, joints0, pixels);
-            }
-            start = i * cast_pixels.y; stride = cast_pixels.y * sz.z;
-            kernel_render_dexel CU_DIM(width,  1024) (1, start, stride, width, height, ext, ys, offset1, joints1, pixels);
-            if (start -= 1 > 0) {
-                kernel_render_dexel CU_DIM(width,  1024) (1, start, stride, width, height, ext, ys, offset1, joints1, pixels);
-            }
-            if (dump_render.size() && dump_render_axis.find(axis) != string::npos) {
-                pixels.copy_to(dump_buffer);
-                auto file = dump_render + string(1, axis) + "-" + to_string(i) + ".png";
-                dump_png(dump_buffer, width, height, cast_pixels.x, file, dump_colors);
+        casted.render(out, chunk_pos, chunk_size);
+        auto chunk_index = to_string(chunk_pos.x) + "_" + to_string(chunk_pos.y) + "_" + to_string(chunk_pos.z);
+        if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
+            auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
+                 pos  = rotate(chunk_pos, dir),
+                 dim  = rotate(chunk_size, dir),
+                 size = int3 { dim.x * cast_pixels.x, dim.y * cast_pixels.x, dim.z };
+            vector<pixel_t> pixels(size.x * size.y);
+            auto axis = ("xyz")[dir];
+            auto dump_dir = dump_render + chunk_index + "/" + string(1, axis) + "/";
+            if (dump_render_axis.find(axis) != string::npos) for (int i = pos.z, j = 0; i < gsz.z && j < dim.z; i ++, j ++) {
+                out[dir].copy_to(pixels.data(), (size_t) size.x * size.y, (size_t) j * size.x * size.y);
+                auto file = dump_dir + to_string(j) + ".png";
+                dump_png(pixels, size.x, size.y, cast_pixels.x, file, dump_colors);
                 printf("INFO: dumped png to %s\n", file.c_str());
             }
         }
-        CUDA_ASSERT(cudaDeviceSynchronize());
-        printf("PERF: on %c render %d in %f s\n", axis, sz.z, seconds_since(render_start));
+        printf("PERF: render chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(all_start));
     }
     printf("PERF: render done in %f s\n", seconds_since(all_start));
 
