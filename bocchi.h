@@ -7,7 +7,6 @@
 
 #include "deps/lodepng/lodepng.h"
 #include "geom.h"
-#include "trace.h"
 
 namespace bocchi {
 
@@ -318,19 +317,39 @@ struct tri_dexels_t {
     double ext;
     cast_dexel_t dexels[3][2];
 };
-
-struct device_dexel_t {
-    int dir;
-    double ext;
-    int2 dim;
-    device_vector<double> xs, ys;
-    device_vector<int> offset;
-    device_vector<cast_joint_t> joints;
+struct device_chunk_t {
+    int3 size;
+    int2 sample;
+    device_vector<pixel_t> pixels[3];
+    auto parse() {
+        vector<buffer<pixel_t>> bx(size.x), by(size.y), bz(size.z);
+        for (int i = 0; i < size.x; i ++) {
+            size_t len = size.y * size.z * sample.x * sample.x;
+            bx[i] = { pixels[0].ptr + i * len, len };
+        }
+        for (int j = 0; j < size.y; j ++) {
+            size_t len = size.z * size.x * sample.x * sample.x;
+            by[j] = { pixels[1].ptr + j * len, len };
+        }
+        for (int k = 0; k < size.z; k ++) {
+            size_t len = size.x * size.y * sample.x * sample.x;
+            bz[k] = { pixels[2].ptr + k * len, len };
+        }
+        // TODO
+    }
 };
 struct device_tri_dexels_t {
     grid_t grid;
     int2 sample;
     double ext;
+    struct device_dexel_t {
+        int dir;
+        double ext;
+        int2 dim;
+        device_vector<double> xs, ys;
+        device_vector<int> offset;
+        device_vector<cast_joint_t> joints;
+    };
     device_dexel_t dexels[3][2];
     device_tri_dexels_t(tri_dexels_t &input) {
         grid = input.grid;
@@ -350,8 +369,12 @@ struct device_tri_dexels_t {
             }
         }
     }
-    auto render(device_vector<pixel_t> out[3], int3 chunk_pos, int3 chunk_size) {
+    auto render(device_chunk_t &chunk, int3 pos, int3 size) {
+        auto chunk_pos = pos, chunk_size = size;
         auto nx = grid.xs.size(), ny = grid.ys.size(), nz = grid.zs.size();
+        chunk.size = size;
+        chunk.sample = sample;
+        auto &out = chunk.pixels;
         for (int dir = 0; dir < 3; dir ++) {
             auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
                  idx  = rotate(int3 { 0, 1, 2 }, dir),

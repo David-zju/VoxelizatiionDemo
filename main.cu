@@ -1,5 +1,3 @@
-#include "geom.h"
-
 #include "bocchi.h"
 
 using namespace bocchi;
@@ -155,13 +153,6 @@ int main(int argc, char *argv[]) {
     }
     printf("INFO: using pixel size %d x %d\n", cast_pixels.x, cast_pixels.y);
 
-    // Note: disabled at present
-    if (0) {
-        trace_t tracer(mesh, grid);
-        tracer.render("data/x.png");
-        return 0;
-    }
-
     auto all_start = clock_now();
     device_vector verts(mesh.verts);
     device_vector faces(mesh.faces);
@@ -217,9 +208,9 @@ int main(int argc, char *argv[]) {
     map<unsigned short, int3> dump_colors = { { 0xffff, { 0, 0, 0 } } };
     auto dump_render_axis = args["dump-render-axis"];
 
-    int3 chunk_size = { 32, 32, 32 };
-    if (args.count("dump-render-chunk-size")) {
-        auto render_chunk = args["dump-render-chunk-size"];
+    int3 chunk_size = { 0, 0, 0 };
+    if (args.count("render-chunk-size")) {
+        auto render_chunk = args["render-chunk-size"];
         replace(render_chunk.begin(), render_chunk.end(), ',', ' ');
         if (render_chunk.find(' ') == string::npos) {
             render_chunk = render_chunk + " " + render_chunk + " " + render_chunk;
@@ -230,24 +221,26 @@ int main(int argc, char *argv[]) {
     chunk_size.x = min((int) nx, chunk_size.x);
     chunk_size.y = min((int) ny, chunk_size.y);
     chunk_size.z = min((int) nz, chunk_size.z);
-    printf("INFO: render chunk size %d x %d x %d\n", chunk_size.x, chunk_size.y, chunk_size.z);
 
     vector<int3> chunks;
-    for (int i = 0; i < nx; i += chunk_size.x) {
-        for (int j = 0; j < ny; j += chunk_size.y) {
-            for (int k = 0; k < nz; k += chunk_size.z) {
-                chunks.push_back({ i, j, k });
+    if (chunk_size.x && chunk_size.y && chunk_size.z) {
+        printf("INFO: render chunk size %d x %d x %d\n", chunk_size.x, chunk_size.y, chunk_size.z);
+        for (int i = 0; i < nx; i += chunk_size.x) {
+            for (int j = 0; j < ny; j += chunk_size.y) {
+                for (int k = 0; k < nz; k += chunk_size.z) {
+                    chunks.push_back({ i, j, k });
+                }
             }
         }
+        printf("INFO: got %zu chunks\n", chunks.size());
     }
-    printf("INFO: got %zu chunks\n", chunks.size());
 
     device_tri_dexels_t dexels(casted);
-    device_vector<pixel_t> out[3];
+    device_chunk_t chunk;
     auto render_start = clock_now();
     for (auto chunk_pos : chunks) {
         auto render_start = clock_now();
-        dexels.render(out, chunk_pos, chunk_size);
+        dexels.render(chunk, chunk_pos, chunk_size);
         auto chunk_index = to_string(chunk_pos.x) + "_" + to_string(chunk_pos.y) + "_" + to_string(chunk_pos.z);
         if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
             auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
@@ -258,7 +251,7 @@ int main(int argc, char *argv[]) {
             auto axis = ("xyz")[dir];
             auto dump_dir = dump_render + chunk_index + "/" + string(1, axis) + "/";
             if (dump_render_axis.find(axis) != string::npos) for (int i = pos.z, j = 0; i < gsz.z && j < dim.z; i ++, j ++) {
-                out[dir].copy_to(pixels.data(), (size_t) size.x * size.y, (size_t) j * size.x * size.y);
+                chunk.pixels[dir].copy_to(pixels.data(), (size_t) size.x * size.y, (size_t) j * size.x * size.y);
                 auto file = dump_dir + to_string(j) + ".png";
                 dump_png(pixels, size.x, size.y, cast_pixels.x, file, dump_colors);
                 printf("INFO: dumped png to %s\n", file.c_str());
