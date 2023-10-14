@@ -217,7 +217,21 @@ int main(int argc, char *argv[]) {
     map<unsigned short, int3> dump_colors = { { 0xffff, { 0, 0, 0 } } };
     auto dump_render_axis = args["dump-render-axis"];
 
-    int3 chunk_size = { 128, 128, 8 };
+    int3 chunk_size = { 32, 32, 32 };
+    if (args.count("dump-render-chunk-size")) {
+        auto render_chunk = args["dump-render-chunk-size"];
+        replace(render_chunk.begin(), render_chunk.end(), ',', ' ');
+        if (render_chunk.find(' ') == string::npos) {
+            render_chunk = render_chunk + " " + render_chunk + " " + render_chunk;
+        }
+        stringstream ss(render_chunk);
+        ss >> chunk_size.x >> chunk_size.y >> chunk_size.z;
+    }
+    chunk_size.x = min((int) nx, chunk_size.x);
+    chunk_size.y = min((int) ny, chunk_size.y);
+    chunk_size.z = min((int) nz, chunk_size.z);
+    printf("INFO: render chunk size %d x %d x %d\n", chunk_size.x, chunk_size.y, chunk_size.z);
+
     vector<int3> chunks;
     for (int i = 0; i < nx; i += chunk_size.x) {
         for (int j = 0; j < ny; j += chunk_size.y) {
