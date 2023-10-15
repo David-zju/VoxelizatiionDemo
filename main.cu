@@ -243,21 +243,23 @@ int main(int argc, char *argv[]) {
         dexels.render(chunk, pos, chunk_size);
         auto chunk_index = to_string(pos.x) + "_" + to_string(pos.y) + "_" + to_string(pos.z);
         if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
-            auto gsz  = rotate(int3 { (int) nx, (int) ny, (int) nz }, dir),
-                 pos  = rotate(chunk.pos, dir),
-                 dim  = rotate(chunk.size, dir),
+            auto dim  = rotate(chunk.size, dir),
                  size = int3 { dim.x * cast_pixels.x, dim.y * cast_pixels.x, dim.z };
             vector<pixel_t> pixels(size.x * size.y);
             auto axis = ("xyz")[dir];
             auto dump_dir = dump_render + chunk_index + "/" + string(1, axis) + "/";
-            if (dump_render_axis.find(axis) != string::npos) for (int i = pos.z, j = 0; i < gsz.z && j < dim.z; i ++, j ++) {
-                chunk.pixels[dir].copy_to(pixels.data(), (size_t) size.x * size.y, (size_t) j * size.x * size.y);
-                auto file = dump_dir + to_string(j) + ".png";
+            if (dump_render_axis.find(axis) != string::npos) for (int i = 0; i < dim.z; i ++) {
+                chunk.pixels[dir].copy_to(pixels.data(), (size_t) size.x * size.y, (size_t) i * size.x * size.y);
+                auto file = dump_dir + to_string(i) + ".png";
                 dump_png(pixels, size.x, size.y, cast_pixels.x, file, dump_colors);
                 printf("INFO: dumped png to %s\n", file.c_str());
             }
         }
-        printf("PERF: render chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(render_start));
+        printf("PERF: render chunk %s (%d x %d x %d) done in %f s\n",
+            chunk_index.c_str(), chunk.size.x, chunk.size.y, chunk.size.z, seconds_since(render_start));
+        auto parse_start = clock_now();
+        chunk.parse();
+        printf("PERF: parsed chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(parse_start));
     }
     printf("PERF: render done in %f s\n", seconds_since(render_start));
 

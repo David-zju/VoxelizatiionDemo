@@ -252,6 +252,7 @@ struct device_group {
 
 struct pixel_t {
     unsigned short geom;
+    char region;
 };
 __global__ void kernel_render_dexel(
         int dir, int ns,
@@ -306,6 +307,10 @@ auto dump_png(vector<pixel_t> &img, int width, int height, int grid, string file
             p[1] = c.y;
             p[2] = m ? 255 : c.z;
             p[3] = 255;
+            if (img[k].region >= 0) {
+                p[0] = img[k].region * 50;
+                p[1] = 0;
+            }
         }
     }
     lodepng::encode(file, buf, width, height);
@@ -317,25 +322,147 @@ struct tri_dexels_t {
     double ext;
     cast_dexel_t dexels[3][2];
 };
+enum FACE_INDEX {
+    FRONT,
+    LEFT,
+    TOP,
+    RIGHT,
+    BACK,
+    BOTTOM,
+};
+struct id_next {
+    int3 next[4];
+};
+__host__ __device__ __forceinline__
+auto get_next(int3 idx, int ns) {
+    int3 left = idx,
+         top = idx,
+         right = idx,
+         bottom = idx;
+    left.x   -= 1;
+    right.x  += 1;
+    top.y    -= 1;
+    bottom.y += 1;
+    if (left.x < 0) {
+        left  = idx.z == FRONT ? int3 { idx.y, 0,      BOTTOM } :
+                idx.z == LEFT  ? int3 { idx.y, 0,      FRONT } :
+                idx.z == TOP   ? int3 { idx.y, ns - 1, LEFT } :
+                idx.z == RIGHT ? int3 { idx.y, ns - 1, FRONT } :
+                idx.z == BACK  ? int3 { idx.y, ns - 1, BOTTOM } :
+                                 int3 { idx.y, 0,      LEFT };
+    }
+    if (right.x >= ns) {
+        right = idx.z == FRONT ? int3 { idx.y, 0,      TOP } :
+                idx.z == LEFT  ? int3 { idx.y, 0,      BOTTOM } :
+                idx.z == TOP   ? int3 { idx.y, ns - 1, RIGHT } :
+                idx.z == RIGHT ? int3 { idx.y, ns - 1, BACK } :
+                idx.z == BACK  ? int3 { idx.y, ns - 1, TOP } :
+                                 int3 { idx.y, 0,      RIGHT };
+    }
+    if (top.y < 0) {
+        top   = idx.z == FRONT ? int3 { 0,      idx.x, LEFT } :
+                idx.z == LEFT  ? int3 { 0,      idx.x, BOTTOM } :
+                idx.z == TOP   ? int3 { ns - 1, idx.x, FRONT } :
+                idx.z == RIGHT ? int3 { ns - 1, idx.x, BOTTOM } :
+                idx.z == BACK  ? int3 { ns - 1, idx.x, LEFT } :
+                                 int3 { 0,      idx.x, FRONT };
+    }
+    if (bottom.y >= ns) {
+        bottom= idx.z == FRONT ? int3 { 0,      idx.x, RIGHT } :
+                idx.z == LEFT  ? int3 { 0,      idx.x, TOP } :
+                idx.z == TOP   ? int3 { ns - 1, idx.x, BACK } :
+                idx.z == RIGHT ? int3 { ns - 1, idx.x, TOP } :
+                idx.z == BACK  ? int3 { ns - 1, idx.x, RIGHT } :
+                                 int3 { 0,      idx.x, BACK };
+    }
+    return id_next { { left, right, top, bottom } };
+}
+template <typename T>
+struct array {
+    T *ptr;
+    int width;
+    int2 offset;
+    __host__ __device__ __forceinline__ 
+    auto operator[](int j) {
+        return ptr + (j + offset.y) * width + offset.x;
+    }
+    __host__ __device__ __forceinline__ 
+    auto operator+(int n) {
+        return array { ptr + n, width, offset };
+    }
+};
+constexpr int MAX_STACK = 256;
+__host__ __device__ auto fill_cell(int ns, array<pixel_t> *patches, int3 start, char region) {
+    int3 stack[MAX_STACK];
+    int sbp = 0;
+    stack[sbp ++] = start;
+    while (sbp > 0) {
+        auto idx = stack[sbp --];
+        auto &p = patches[idx.z][idx.y][idx.x];
+        if (p.region == -1) {
+            p.region = region;
+            if (p.geom != 0xffff) {
+                auto val = get_next(start, ns);
+                for (int i = 0; i < 4; i ++) {
+                    if (sbp < MAX_STACK) {
+                        stack[sbp ++] = val.next[i];
+                    } else { // Stack Overflow
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+struct cell_t {
+    char regions;
+};
+__global__ void kernel_check_cell(int start, int3 size, int ns,
+    buffer<pixel_t> bx, buffer<pixel_t> by, buffer<pixel_t> bz,
+    buffer<cell_t> out) {
+    auto nxy = size.x * size.y, nyz = size.y * size.z, nzx = size.z * size.x;
+    for (int i = cuIdx(x); i < size.x - 1; i += cuDim(x))
+    for (int j = cuIdx(y); j < size.y - 1; j += cuDim(y))
+    for (int k = cuIdx(z); k < size.z - 1; k += cuDim(z)) {
+        if ((i + j + k) % 2 != start) {
+            continue;
+        }
+        auto x0 = array<pixel_t> { bx.ptr + nyz * i, size.y, { j * ns, k * ns } },
+             y0 = array<pixel_t> { by.ptr + nzx * j, size.z, { k * ns, i * ns } },
+             z0 = array<pixel_t> { bz.ptr + nxy * k, size.x, { i * ns, j * ns } };
+        array<pixel_t> patches[6] = { y0, x0, z0, x0 + nyz, z0 + nxy, y0 + nzx };
+        char region = 0;
+        for (int w = 0; w < 6; w ++)
+        for (int u = 0; u < ns; u ++)
+        for (int v = 0; v < ns; v ++) {
+            auto &p = patches[w][u][v];
+            if (p.region == -1) {
+                fill_cell(ns, patches, { v, u, w }, region ++);
+            }
+        }
+        out[i + j * size.x + k * nxy] = { region };
+    }
+}
+__global__ void kernel_fill_region(buffer<pixel_t> arr, char region) {
+    for (int i = cuIdx(x); i < arr.len; i += cuDim(x)) {
+        arr[i].region = region;
+    }
+}
 struct device_chunk_t {
     int3 pos, size;
     int2 sample;
     device_vector<pixel_t> pixels[3];
     auto parse() {
-        vector<buffer<pixel_t>> bx(size.x), by(size.y), bz(size.z);
-        for (int i = 0; i < size.x; i ++) {
-            size_t len = size.y * size.z * sample.x * sample.x;
-            bx[i] = { pixels[0].ptr + i * len, len };
+        device_vector<cell_t> cells(size.x * size.y * size.z);
+        kernel_reset CU_DIM(1024, 128) (cells, { -1 });
+        // Note: do this twice as faces are shared by cells
+        for (int i = 0; i < 2; i ++) {
+            for (int j = 0; j < 3; j ++){
+                kernel_fill_region CU_DIM(1024, 128) (pixels[j], -1);
+            }
+            kernel_check_cell CU_DIM(dim3(size.x, size.y, size.z), 1) (i, size, sample.x, pixels[0], pixels[1], pixels[2], cells);
         }
-        for (int j = 0; j < size.y; j ++) {
-            size_t len = size.z * size.x * sample.x * sample.x;
-            by[j] = { pixels[1].ptr + j * len, len };
-        }
-        for (int k = 0; k < size.z; k ++) {
-            size_t len = size.x * size.y * sample.x * sample.x;
-            bz[k] = { pixels[2].ptr + k * len, len };
-        }
-        // TODO
+        CUDA_ASSERT(cudaDeviceSynchronize());
     }
 };
 struct device_tri_dexels_t {
