@@ -437,18 +437,18 @@ __global__ void kernel_check_cell(int start, int3 size, int ns,
          y0 = array<pixel_t> { by.ptr + nzx * j, sz.z, { k * ns, i * ns } },
          z0 = array<pixel_t> { bz.ptr + nxy * k, sz.x, { i * ns, j * ns } };
     array<pixel_t> patches[6] = { y0, x0, z0, y0 + nzx, x0 + nyz, z0 + nxy };
-    char region = 0;
+    char regions = 0;
     #pragma unroll
     for (int w = 0; w < 6; w ++)
     for (int u = 0; u < ns; u ++)
     for (int v = 0; v < ns; v ++) {
         auto &p = patches[w][u][v];
         if (p.region == -1) {
-            fill_cell_regions(ns, patches, { v, u, w }, region ++);
+            fill_cell_regions(ns, patches, { v, u, w }, regions ++);
         }
     }
-    if (region >= 32) {
-        printf("WARN: too many regions %d filling cell %d,%d,%d\n", region, i, j, k);
+    if (regions >= 32) {
+        printf("WARN: too many regions %d filling cell %d,%d,%d\n", regions, i, j, k);
     }
 }
 __global__ void kernel_fill_region(buffer<pixel_t> arr, char region) {
@@ -526,13 +526,13 @@ struct device_tri_dexels_t {
                  &d1 = dexels[idx.y][sample.x == sample.y ? 0 : 1];
             auto &offset0 = d0.offset, &offset1 = d1.offset;
             auto &joints0 = d0.joints, &joints1 = d1.joints;
-            auto &out = chunk.pixels[dir];
-            out.resize(size.x * size.y * size.z);
-            kernel_reset CU_DIM(1024, 128) (out, { 0xffff });
+            auto &output = chunk.pixels[dir];
+            output.resize(size.x * size.y * size.z);
+            kernel_reset CU_DIM(1024, 128) (output, { 0xffff });
 
             auto render_start = clock_now();
             for (int i = pos.z, j = 0; i < gsz.z && j < dim.z; i ++, j ++) {
-                buffer<pixel_t> pixels = { out.ptr + j * size.x * size.y, (unsigned) size.x * size.y };
+                buffer<pixel_t> pixels = { output.ptr + j * size.x * size.y, (unsigned) size.x * size.y };
                 int2 delta = { i * sample.y * gsz.y * sample.x + pos.y * sample.x, 1 };
                 kernel_render_dexel CU_DIM(size.y, 1024) (0, sample.x, delta, pos, size, ext, xs, offset0, joints0, pixels);
                 delta.x -= gsz.y * sample.x;
