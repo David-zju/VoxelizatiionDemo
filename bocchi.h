@@ -308,8 +308,9 @@ auto dump_png(vector<pixel_t> &img, int width, int height, int grid, string file
             p[2] = m ? 255 : c.z;
             p[3] = 255;
             if (img[k].region >= 0) {
-                p[0] = img[k].region * 50;
+                p[0] = min((int) img[k].region * 50 + 50, 255);
                 p[1] = 0;
+                p[2] = 0;
             }
         }
     }
@@ -326,53 +327,53 @@ enum FACE_INDEX {
     FRONT,
     LEFT,
     TOP,
-    RIGHT,
     BACK,
+    RIGHT,
     BOTTOM,
 };
 struct id_next {
     int3 next[4];
 };
 __host__ __device__ __forceinline__
-auto get_next(int3 idx, int ns) {
+auto get_cell_neighbour(int3 idx, int ns) {
     int3 left = idx,
          top = idx,
          right = idx,
          bottom = idx;
-    left.x   -= 1;
-    right.x  += 1;
-    top.y    -= 1;
-    bottom.y += 1;
+    left.x   --;
+    top.y    --;
+    right.x  ++;
+    bottom.y ++;
     if (left.x < 0) {
         left  = idx.z == FRONT ? int3 { idx.y, 0,      BOTTOM } :
                 idx.z == LEFT  ? int3 { idx.y, 0,      FRONT } :
                 idx.z == TOP   ? int3 { idx.y, ns - 1, LEFT } :
-                idx.z == RIGHT ? int3 { idx.y, ns - 1, FRONT } :
                 idx.z == BACK  ? int3 { idx.y, ns - 1, BOTTOM } :
+                idx.z == RIGHT ? int3 { idx.y, ns - 1, FRONT } :
                                  int3 { idx.y, 0,      LEFT };
     }
     if (right.x >= ns) {
         right = idx.z == FRONT ? int3 { idx.y, 0,      TOP } :
-                idx.z == LEFT  ? int3 { idx.y, 0,      BOTTOM } :
+                idx.z == LEFT  ? int3 { idx.y, 0,      BACK } :
                 idx.z == TOP   ? int3 { idx.y, ns - 1, RIGHT } :
-                idx.z == RIGHT ? int3 { idx.y, ns - 1, BACK } :
                 idx.z == BACK  ? int3 { idx.y, ns - 1, TOP } :
+                idx.z == RIGHT ? int3 { idx.y, ns - 1, BACK } :
                                  int3 { idx.y, 0,      RIGHT };
     }
     if (top.y < 0) {
         top   = idx.z == FRONT ? int3 { 0,      idx.x, LEFT } :
                 idx.z == LEFT  ? int3 { 0,      idx.x, BOTTOM } :
                 idx.z == TOP   ? int3 { ns - 1, idx.x, FRONT } :
-                idx.z == RIGHT ? int3 { ns - 1, idx.x, BOTTOM } :
                 idx.z == BACK  ? int3 { ns - 1, idx.x, LEFT } :
+                idx.z == RIGHT ? int3 { ns - 1, idx.x, BOTTOM } :
                                  int3 { 0,      idx.x, FRONT };
     }
     if (bottom.y >= ns) {
         bottom= idx.z == FRONT ? int3 { 0,      idx.x, RIGHT } :
                 idx.z == LEFT  ? int3 { 0,      idx.x, TOP } :
                 idx.z == TOP   ? int3 { ns - 1, idx.x, BACK } :
-                idx.z == RIGHT ? int3 { ns - 1, idx.x, TOP } :
                 idx.z == BACK  ? int3 { ns - 1, idx.x, RIGHT } :
+                idx.z == RIGHT ? int3 { ns - 1, idx.x, TOP } :
                                  int3 { 0,      idx.x, BACK };
     }
     return id_next { { left, right, top, bottom } };
@@ -391,27 +392,33 @@ struct array {
         return array { ptr + n, width, offset };
     }
 };
-constexpr int MAX_STACK = 256;
-__host__ __device__ auto fill_cell(int ns, array<pixel_t> *patches, int3 start, char region) {
+constexpr int MAX_STACK = 16 * 16 * 6;
+__host__ __device__ auto fill_cell_regions(int ns, array<pixel_t> *patches, int3 idx, char region) {
     int3 stack[MAX_STACK];
-    int sbp = 0;
-    stack[sbp ++] = start;
-    while (sbp > 0) {
-        auto idx = stack[sbp --];
-        auto &p = patches[idx.z][idx.y][idx.x];
-        if (p.region == -1) {
-            p.region = region;
-            if (p.geom != 0xffff) {
-                auto val = get_next(start, ns);
-                for (int i = 0; i < 4; i ++) {
-                    if (sbp < MAX_STACK) {
-                        stack[sbp ++] = val.next[i];
-                    } else { // Stack Overflow
-                        break;
-                    }
+    int addr = 0, cnt = 0;
+    auto &p = patches[idx.z][idx.y][idx.x];
+    p.region = region;
+    // TODO: take care of flags
+    auto flag = p.geom == 0xffff;
+    stack[addr ++] = idx;
+    while (addr > 0) {
+        auto idx = stack[-- addr];
+        auto val = get_cell_neighbour(idx, ns);
+        for (int i = 0; i < 4; i ++) {
+            if (addr >= MAX_STACK - 1) {
+                printf("WARN: stack overflow filling %d, count %d\n", region, cnt);
+                break;
+                break;
+            } else {
+                auto idx = val.next[i];
+                auto &p = patches[idx.z][idx.y][idx.x];
+                if (p.region == -1 && flag == (p.geom == 0xffff) && p.region != region) {
+                    p.region = region;
+                    stack[addr ++] = idx;
                 }
             }
         }
+        cnt ++;
     }
 }
 struct cell_t {
@@ -420,27 +427,28 @@ struct cell_t {
 __global__ void kernel_check_cell(int start, int3 size, int ns,
     buffer<pixel_t> bx, buffer<pixel_t> by, buffer<pixel_t> bz,
     buffer<cell_t> out) {
-    auto nxy = size.x * size.y, nyz = size.y * size.z, nzx = size.z * size.x;
-    for (int i = cuIdx(x); i < size.x - 1; i += cuDim(x))
-    for (int j = cuIdx(y); j < size.y - 1; j += cuDim(y))
-    for (int k = cuIdx(z); k < size.z - 1; k += cuDim(z)) {
-        if ((i + j + k) % 2 != start) {
-            continue;
+    int i = blockIdx.x, j = blockIdx.y, k = blockIdx.z;
+    if ((i + j + k) % 2 != start) {
+        return;
+    }
+    auto sz = int3 { size.x * ns, size.y * ns, size.z * ns };
+    auto nxy = sz.x * sz.y, nyz = sz.y * sz.z, nzx = sz.z * sz.x;
+    auto x0 = array<pixel_t> { bx.ptr + nyz * i, sz.y, { j * ns, k * ns } },
+         y0 = array<pixel_t> { by.ptr + nzx * j, sz.z, { k * ns, i * ns } },
+         z0 = array<pixel_t> { bz.ptr + nxy * k, sz.x, { i * ns, j * ns } };
+    array<pixel_t> patches[6] = { y0, x0, z0, y0 + nzx, x0 + nyz, z0 + nxy };
+    char region = 0;
+    #pragma unroll
+    for (int w = 0; w < 6; w ++)
+    for (int u = 0; u < ns; u ++)
+    for (int v = 0; v < ns; v ++) {
+        auto &p = patches[w][u][v];
+        if (p.region == -1) {
+            fill_cell_regions(ns, patches, { v, u, w }, region ++);
         }
-        auto x0 = array<pixel_t> { bx.ptr + nyz * i, size.y, { j * ns, k * ns } },
-             y0 = array<pixel_t> { by.ptr + nzx * j, size.z, { k * ns, i * ns } },
-             z0 = array<pixel_t> { bz.ptr + nxy * k, size.x, { i * ns, j * ns } };
-        array<pixel_t> patches[6] = { y0, x0, z0, x0 + nyz, z0 + nxy, y0 + nzx };
-        char region = 0;
-        for (int w = 0; w < 6; w ++)
-        for (int u = 0; u < ns; u ++)
-        for (int v = 0; v < ns; v ++) {
-            auto &p = patches[w][u][v];
-            if (p.region == -1) {
-                fill_cell(ns, patches, { v, u, w }, region ++);
-            }
-        }
-        out[i + j * size.x + k * nxy] = { region };
+    }
+    if (region >= 32) {
+        printf("WARN: too many regions %d filling cell %d,%d,%d\n", region, i, j, k);
     }
 }
 __global__ void kernel_fill_region(buffer<pixel_t> arr, char region) {
@@ -455,12 +463,13 @@ struct device_chunk_t {
     auto parse() {
         device_vector<cell_t> cells(size.x * size.y * size.z);
         kernel_reset CU_DIM(1024, 128) (cells, { -1 });
+        dim3 gridDim(size.x - 1, size.y - 1, size.z - 1);
         // Note: do this twice as faces are shared by cells
         for (int i = 0; i < 2; i ++) {
             for (int j = 0; j < 3; j ++){
                 kernel_fill_region CU_DIM(1024, 128) (pixels[j], -1);
             }
-            kernel_check_cell CU_DIM(dim3(size.x, size.y, size.z), 1) (i, size, sample.x, pixels[0], pixels[1], pixels[2], cells);
+            kernel_check_cell CU_DIM(gridDim, 1) (i, size, sample.x, pixels[0], pixels[1], pixels[2], cells);
         }
         CUDA_ASSERT(cudaDeviceSynchronize());
     }

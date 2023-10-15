@@ -239,9 +239,17 @@ int main(int argc, char *argv[]) {
     device_chunk_t chunk;
     auto render_start = clock_now();
     for (auto pos : chunks) {
+        auto chunk_index = to_string(pos.x) + "_" + to_string(pos.y) + "_" + to_string(pos.z);
+
         auto render_start = clock_now();
         dexels.render(chunk, pos, chunk_size);
-        auto chunk_index = to_string(pos.x) + "_" + to_string(pos.y) + "_" + to_string(pos.z);
+        printf("PERF: render chunk %s (%d x %d x %d) done in %f s\n",
+            chunk_index.c_str(), chunk.size.x, chunk.size.y, chunk.size.z, seconds_since(render_start));
+
+        auto parse_start = clock_now();
+        chunk.parse();
+        printf("PERF: parsed chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(parse_start));
+
         if (dump_render.size()) for (int dir = 0; dir < 3; dir ++) {
             auto dim  = rotate(chunk.size, dir),
                  size = int3 { dim.x * cast_pixels.x, dim.y * cast_pixels.x, dim.z };
@@ -255,11 +263,6 @@ int main(int argc, char *argv[]) {
                 printf("INFO: dumped png to %s\n", file.c_str());
             }
         }
-        printf("PERF: render chunk %s (%d x %d x %d) done in %f s\n",
-            chunk_index.c_str(), chunk.size.x, chunk.size.y, chunk.size.z, seconds_since(render_start));
-        auto parse_start = clock_now();
-        chunk.parse();
-        printf("PERF: parsed chunk %s done in %f s\n", chunk_index.c_str(), seconds_since(parse_start));
     }
     printf("PERF: render done in %f s\n", seconds_since(render_start));
 
